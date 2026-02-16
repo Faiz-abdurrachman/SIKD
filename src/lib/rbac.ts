@@ -1,4 +1,6 @@
-export type UserRole = "SUPER_ADMIN" | "KEPALA_DESA" | "SEKRETARIS" | "OPERATOR";
+import { SIDEBAR_MENU, type AppRole, type SidebarMenuItem } from "@/lib/constants";
+
+export type UserRole = AppRole;
 
 type PermissionMap = {
   [resource: string]: {
@@ -45,25 +47,6 @@ export const PERMISSIONS: PermissionMap = {
   audit: { view: ["SUPER_ADMIN", "KEPALA_DESA"] },
 };
 
-export type SidebarMenuItem = {
-  label: string;
-  href: string;
-  roles: Array<UserRole | "*">;
-};
-
-const SIDEBAR_MENU: SidebarMenuItem[] = [
-  { label: "Dashboard", href: "/", roles: ["*"] },
-  { label: "Penduduk", href: "/penduduk", roles: ["*"] },
-  { label: "Keluarga", href: "/keluarga", roles: ["*"] },
-  { label: "Surat", href: "/surat", roles: ["*"] },
-  { label: "Mutasi", href: "/mutasi", roles: ["*"] },
-  { label: "Laporan", href: "/laporan", roles: ["SUPER_ADMIN", "KEPALA_DESA", "SEKRETARIS"] },
-  { label: "Wilayah", href: "/wilayah", roles: ["SUPER_ADMIN", "SEKRETARIS"] },
-  { label: "Pengguna", href: "/pengguna", roles: ["SUPER_ADMIN"] },
-  { label: "Pengaturan", href: "/pengaturan", roles: ["SUPER_ADMIN", "KEPALA_DESA"] },
-  { label: "Audit Log", href: "/audit-log", roles: ["SUPER_ADMIN", "KEPALA_DESA"] },
-];
-
 export function canAccess(role: UserRole, resource: string, action: string): boolean {
   const resourcePermissions = PERMISSIONS[resource];
   if (!resourcePermissions) {
@@ -79,5 +62,11 @@ export function canAccess(role: UserRole, resource: string, action: string): boo
 }
 
 export function getAccessibleMenuItems(role: UserRole): SidebarMenuItem[] {
-  return SIDEBAR_MENU.filter((item) => item.roles.includes("*") || item.roles.includes(role));
+  return SIDEBAR_MENU.filter((item) => {
+    if (item.type === "separator") {
+      return true;
+    }
+
+    return item.roles.includes("*") || item.roles.includes(role);
+  });
 }
