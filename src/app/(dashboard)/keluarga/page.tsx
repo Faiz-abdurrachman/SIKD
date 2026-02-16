@@ -1,3 +1,33 @@
-export default function KeluargaPage() {
-  return <h1 className="text-xl font-semibold text-slate-900">Module Keluarga</h1>;
+import { ShieldAlert } from "lucide-react";
+import { redirect } from "next/navigation";
+
+import { KeluargaTable } from "@/components/keluarga/keluarga-table";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { auth } from "@/lib/auth";
+import { canAccess } from "@/lib/rbac";
+
+export default async function KeluargaPage() {
+  const session = await auth();
+
+  if (!session?.user) {
+    redirect("/login");
+  }
+
+  if (!canAccess(session.user.role, "keluarga", "view")) {
+    return (
+      <Alert className="border-red-200 bg-red-50 text-red-800">
+        <ShieldAlert className="h-4 w-4" />
+        <AlertTitle>Akses ditolak</AlertTitle>
+        <AlertDescription>Kamu tidak punya izin untuk melihat modul keluarga.</AlertDescription>
+      </Alert>
+    );
+  }
+
+  return (
+    <KeluargaTable
+      canCreate={canAccess(session.user.role, "keluarga", "create")}
+      canDelete={canAccess(session.user.role, "keluarga", "delete")}
+      canUpdate={canAccess(session.user.role, "keluarga", "update")}
+    />
+  );
 }
