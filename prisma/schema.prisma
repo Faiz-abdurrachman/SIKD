@@ -1,0 +1,400 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ═══════════════════════════════════════════════════════
+// ENUMS
+// ═══════════════════════════════════════════════════════
+
+enum UserRole {
+  SUPER_ADMIN
+  KEPALA_DESA
+  SEKRETARIS
+  OPERATOR
+}
+
+enum JenisKelamin {
+  LAKI_LAKI
+  PEREMPUAN
+}
+
+enum Agama {
+  ISLAM
+  KRISTEN
+  KATOLIK
+  HINDU
+  BUDDHA
+  KONGHUCU
+  KEPERCAYAAN
+}
+
+enum StatusPerkawinan {
+  BELUM_KAWIN
+  KAWIN
+  CERAI_HIDUP
+  CERAI_MATI
+}
+
+enum StatusHubunganKeluarga {
+  KEPALA_KELUARGA
+  ISTRI
+  ANAK
+  MENANTU
+  CUCU
+  ORANG_TUA
+  MERTUA
+  FAMILI_LAIN
+  PEMBANTU
+  LAINNYA
+}
+
+enum GolonganDarah {
+  A
+  B
+  AB
+  O
+  TIDAK_TAHU
+}
+
+enum StatusKependudukan {
+  TETAP
+  SEMENTARA
+  PINDAH
+  MENINGGAL
+}
+
+enum Pendidikan {
+  TIDAK_SEKOLAH
+  SD
+  SMP
+  SMA
+  D1
+  D2
+  D3
+  S1
+  S2
+  S3
+}
+
+enum JenisSurat {
+  SK_DOMISILI
+  SK_TIDAK_MAMPU
+  SK_USAHA
+  SK_KELAHIRAN
+  SK_KEMATIAN
+  SK_PINDAH
+  SK_DATANG
+  SK_BELUM_MENIKAH
+  SK_BEDA_NAMA
+  SK_KEHILANGAN
+  SK_CATATAN_KEPOLISIAN
+  SURAT_PENGANTAR
+  SK_TANAH
+  SK_PENGHASILAN
+  SK_IZIN_KERAMAIAN
+  LAINNYA
+}
+
+enum StatusSurat {
+  DRAFT
+  MENUNGGU_PERSETUJUAN
+  DISETUJUI
+  DITOLAK
+  DICETAK
+  SELESAI
+}
+
+enum JenisMutasi {
+  LAHIR
+  MATI
+  PINDAH_KELUAR
+  PINDAH_MASUK
+}
+
+// ═══════════════════════════════════════════════════════
+// AUTH & USER
+// ═══════════════════════════════════════════════════════
+
+model User {
+  id            String    @id @default(cuid())
+  username      String    @unique
+  email         String?   @unique
+  passwordHash  String    @map("password_hash")
+  nama          String
+  role          UserRole  @default(OPERATOR)
+  isActive      Boolean   @default(true) @map("is_active")
+  lastLoginAt   DateTime? @map("last_login_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  suratCreated  Surat[]     @relation("SuratCreator")
+  suratApproved Surat[]     @relation("SuratApprover")
+  auditLogs     AuditLog[]
+  sessions      Session[]
+
+  @@map("users")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// ═══════════════════════════════════════════════════════
+// WILAYAH (AREA HIERARCHY)
+// ═══════════════════════════════════════════════════════
+
+model Desa {
+  id             String   @id @default(cuid())
+  kode           String   @unique
+  nama           String
+  kecamatan      String
+  kabupaten      String
+  provinsi       String
+  kodePos        String?  @map("kode_pos")
+  alamatKantor   String?  @map("alamat_kantor")
+  telepon        String?
+  email          String?
+  website        String?
+  logo           String?
+  namaKepalaDesa String?  @map("nama_kepala_desa")
+  nipKepalaDesa  String?  @map("nip_kepala_desa")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  dusun Dusun[]
+
+  @@map("desa")
+}
+
+model Dusun {
+  id        String   @id @default(cuid())
+  nama      String
+  desaId    String   @map("desa_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  desa   Desa @relation(fields: [desaId], references: [id])
+  rwList RW[]
+
+  @@unique([desaId, nama])
+  @@map("dusun")
+}
+
+model RW {
+  id        String   @id @default(cuid())
+  nomor     String
+  dusunId   String   @map("dusun_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  dusun  Dusun @relation(fields: [dusunId], references: [id])
+  rtList RT[]
+
+  @@unique([dusunId, nomor])
+  @@map("rw")
+}
+
+model RT {
+  id        String   @id @default(cuid())
+  nomor     String
+  rwId      String   @map("rw_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  rw       RW         @relation(fields: [rwId], references: [id])
+  keluarga Keluarga[]
+
+  @@unique([rwId, nomor])
+  @@map("rt")
+}
+
+// ═══════════════════════════════════════════════════════
+// KEPENDUDUKAN (POPULATION)
+// ═══════════════════════════════════════════════════════
+
+model Keluarga {
+  id               String   @id @default(cuid())
+  noKK             String   @unique @map("no_kk")
+  alamat           String
+  rtId             String   @map("rt_id")
+  kepalaKeluargaId String?  @unique @map("kepala_keluarga_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  rt             RT        @relation(fields: [rtId], references: [id])
+  kepalaKeluarga Penduduk? @relation("KepalaKeluarga", fields: [kepalaKeluargaId], references: [id])
+  anggota        Penduduk[] @relation("AnggotaKeluarga")
+
+  @@index([noKK])
+  @@map("keluarga")
+}
+
+model Penduduk {
+  id                 String                 @id @default(cuid())
+  nik                String                 @unique
+  nama               String
+  tempatLahir        String                 @map("tempat_lahir")
+  tanggalLahir       DateTime               @map("tanggal_lahir")
+  jenisKelamin       JenisKelamin           @map("jenis_kelamin")
+  agama              Agama
+  statusPerkawinan   StatusPerkawinan       @map("status_perkawinan")
+  pendidikanTerakhir Pendidikan             @map("pendidikan_terakhir")
+  pekerjaan          String
+  golonganDarah      GolonganDarah?         @map("golongan_darah")
+  statusHubungan     StatusHubunganKeluarga @map("status_hubungan")
+  namaAyah           String?                @map("nama_ayah")
+  namaIbu            String?                @map("nama_ibu")
+  kewarganegaraan    String                 @default("WNI")
+  statusKependudukan StatusKependudukan     @default(TETAP) @map("status_kependudukan")
+  foto               String?
+  telepon            String?
+  catatan            String?
+
+  keluargaId String   @map("keluarga_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  keluarga           Keluarga        @relation("AnggotaKeluarga", fields: [keluargaId], references: [id])
+  kepalaKeluargaDari Keluarga?       @relation("KepalaKeluarga")
+  suratPenduduk      SuratPenduduk[]
+  mutasiKeluar       Mutasi[]        @relation("MutasiPenduduk")
+
+  @@index([nik])
+  @@index([nama])
+  @@index([keluargaId])
+  @@map("penduduk")
+}
+
+// ═══════════════════════════════════════════════════════
+// SURAT (DOCUMENTS / LETTERS)
+// ═══════════════════════════════════════════════════════
+
+model Surat {
+  id           String      @id @default(cuid())
+  nomorSurat   String      @unique @map("nomor_surat")
+  jenisSurat   JenisSurat  @map("jenis_surat")
+  perihal      String
+  tanggalSurat DateTime    @default(now()) @map("tanggal_surat")
+  isiSurat     Json?       @map("isi_surat")
+  keterangan   String?
+  status       StatusSurat @default(DRAFT)
+  alasanTolak  String?     @map("alasan_tolak")
+
+  createdById  String    @map("created_by_id")
+  approvedById String?   @map("approved_by_id")
+  approvedAt   DateTime? @map("approved_at")
+  printedAt    DateTime? @map("printed_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  createdBy    User            @relation("SuratCreator", fields: [createdById], references: [id])
+  approvedBy   User?           @relation("SuratApprover", fields: [approvedById], references: [id])
+  pendudukList SuratPenduduk[]
+
+  @@index([nomorSurat])
+  @@index([jenisSurat])
+  @@index([status])
+  @@index([tanggalSurat])
+  @@map("surat")
+}
+
+model SuratPenduduk {
+  id         String @id @default(cuid())
+  suratId    String @map("surat_id")
+  pendudukId String @map("penduduk_id")
+  peran      String @default("pemohon")
+
+  surat    Surat    @relation(fields: [suratId], references: [id], onDelete: Cascade)
+  penduduk Penduduk @relation(fields: [pendudukId], references: [id])
+
+  @@unique([suratId, pendudukId, peran])
+  @@map("surat_penduduk")
+}
+
+model NomorSuratCounter {
+  id         String     @id @default(cuid())
+  jenisSurat JenisSurat @map("jenis_surat")
+  tahun      Int
+  lastNumber Int        @default(0) @map("last_number")
+
+  @@unique([jenisSurat, tahun])
+  @@map("nomor_surat_counter")
+}
+
+// ═══════════════════════════════════════════════════════
+// MUTASI (POPULATION CHANGES)
+// ═══════════════════════════════════════════════════════
+
+model Mutasi {
+  id               String      @id @default(cuid())
+  jenisMutasi      JenisMutasi @map("jenis_mutasi")
+  pendudukId       String      @map("penduduk_id")
+  tanggalMutasi    DateTime    @map("tanggal_mutasi")
+  keterangan       String?
+
+  alamatTujuan     String?     @map("alamat_tujuan")
+  alamatAsal       String?     @map("alamat_asal")
+  alasanPindah     String?     @map("alasan_pindah")
+
+  tempatLahir      String?     @map("tempat_lahir_mutasi")
+  namaAyah         String?     @map("nama_ayah_mutasi")
+  namaIbu          String?     @map("nama_ibu_mutasi")
+
+  penyebabKematian String?     @map("penyebab_kematian")
+  tempatKematian   String?     @map("tempat_kematian")
+
+  createdAt        DateTime    @default(now()) @map("created_at")
+
+  penduduk Penduduk @relation("MutasiPenduduk", fields: [pendudukId], references: [id])
+
+  @@index([jenisMutasi])
+  @@index([tanggalMutasi])
+  @@map("mutasi")
+}
+
+// ═══════════════════════════════════════════════════════
+// AUDIT LOG
+// ═══════════════════════════════════════════════════════
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  action    String
+  entity    String
+  entityId  String?  @map("entity_id")
+  oldData   Json?    @map("old_data")
+  newData   Json?    @map("new_data")
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ═══════════════════════════════════════════════════════
+// SETTINGS
+// ═══════════════════════════════════════════════════════
+
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  group     String   @default("general")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
+}
