@@ -23,7 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatEnumLabel, formatTanggalIndonesia } from "@/lib/format";
-import { fetchAllPages } from "@/lib/paginated-client-fetch";
+import { fetchAllPages, fetchPaginatedPage } from "@/lib/paginated-client-fetch";
 import type { MutasiListItem } from "@/types/mutasi.types";
 
 type ErrorResponse = {
@@ -109,6 +109,13 @@ const EMPTY_FORM: MutasiFormState = {
 export function MutasiPage({ canCreate }: { canCreate: boolean }) {
   const [rows, setRows] = useState<MutasiListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: 20,
+    total: 0,
+    totalPages: 1,
+  });
 
   const [keluargaOptions, setKeluargaOptions] = useState<KeluargaOption[]>([]);
   const [pendudukOptions, setPendudukOptions] = useState<PendudukOption[]>([]);
@@ -121,13 +128,25 @@ export function MutasiPage({ canCreate }: { canCreate: boolean }) {
     setIsLoading(true);
 
     try {
-      const data = await fetchAllPages<MutasiListItem>({
+      const result = await fetchPaginatedPage<MutasiListItem>({
         endpoint: "/api/v1/mutasi",
         sortBy: "tanggalMutasi",
         sortOrder: "desc",
         errorMessage: "Gagal memuat data mutasi",
+        page: pagination.page,
+        limit: pagination.pageSize,
+        query: {
+          q: search,
+        },
       });
-      setRows(data);
+      setRows(result.data);
+      setPagination((previous) => ({
+        ...previous,
+        page: result.meta.page,
+        pageSize: result.meta.limit,
+        total: result.meta.total,
+        totalPages: result.meta.totalPages,
+      }));
     } catch (error) {
       console.error("[MutasiPage.loadMutasi]", error);
       toast.error(error instanceof Error ? error.message : "Gagal memuat data mutasi");
@@ -135,7 +154,7 @@ export function MutasiPage({ canCreate }: { canCreate: boolean }) {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [pagination.page, pagination.pageSize, search]);
 
   const loadOptions = useCallback(async () => {
     try {
@@ -179,12 +198,12 @@ export function MutasiPage({ canCreate }: { canCreate: boolean }) {
 
   const stats = useMemo(
     () => ({
-      total: rows.length,
+      total: pagination.total,
       lahir: rows.filter((item) => item.jenisMutasi === "LAHIR").length,
       mati: rows.filter((item) => item.jenisMutasi === "MATI").length,
       pindah: rows.filter((item) => item.jenisMutasi.includes("PINDAH")).length,
     }),
-    [rows],
+    [pagination.total, rows],
   );
 
   const columns = useMemo<ColumnDef<MutasiListItem>[]>(
@@ -342,17 +361,38 @@ export function MutasiPage({ canCreate }: { canCreate: boolean }) {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard description="Total mutasi tercatat" icon={RefreshCw} title="Total Mutasi" value={stats.total} />
-        <StatCard description="Mutasi kelahiran" icon={Users} title="Kelahiran" value={stats.lahir} />
-        <StatCard description="Mutasi kematian" icon={CalendarDays} title="Kematian" value={stats.mati} />
-        <StatCard description="Pindah keluar/masuk" icon={RefreshCw} title="Pindah" value={stats.pindah} />
+        <StatCard description="Mutasi kelahiran di halaman aktif" icon={Users} title="Kelahiran (Halaman)" value={stats.lahir} />
+        <StatCard description="Mutasi kematian di halaman aktif" icon={CalendarDays} title="Kematian (Halaman)" value={stats.mati} />
+        <StatCard description="Mutasi pindah di halaman aktif" icon={RefreshCw} title="Pindah (Halaman)" value={stats.pindah} />
       </div>
 
       <DataTable
         columns={columns}
         data={rows}
         isLoading={isLoading}
-        searchKey="keterangan"
         searchPlaceholder="Cari catatan mutasi..."
+        searchValue={search}
+        onSearchChange={(value) => {
+          setSearch(value);
+          setPagination((previous) => ({
+            ...previous,
+            page: 1,
+          }));
+        }}
+        serverPagination={pagination}
+        onServerPageChange={(page) => {
+          setPagination((previous) => ({
+            ...previous,
+            page,
+          }));
+        }}
+        onServerPageSizeChange={(pageSize) => {
+          setPagination((previous) => ({
+            ...previous,
+            page: 1,
+            pageSize,
+          }));
+        }}
       />
 
       <Dialog onOpenChange={setOpenCreate} open={openCreate}>

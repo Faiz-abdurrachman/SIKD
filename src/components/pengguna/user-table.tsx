@@ -31,7 +31,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ROLE_LABEL } from "@/lib/constants";
 import { formatTanggalIndonesia } from "@/lib/format";
-import { fetchAllPages } from "@/lib/paginated-client-fetch";
+import { fetchPaginatedPage } from "@/lib/paginated-client-fetch";
 import type { UserListItem } from "@/types/user.types";
 
 type ErrorResponse = {
@@ -62,6 +62,13 @@ const EMPTY_FORM: UserFormState = {
 export function UserTable() {
   const [rows, setRows] = useState<UserListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: 20,
+    total: 0,
+    totalPages: 1,
+  });
 
   const [openCreate, setOpenCreate] = useState(false);
   const [openEdit, setOpenEdit] = useState(false);
@@ -80,13 +87,25 @@ export function UserTable() {
     setIsLoading(true);
 
     try {
-      const data = await fetchAllPages<UserListItem>({
+      const result = await fetchPaginatedPage<UserListItem>({
         endpoint: "/api/v1/users",
         sortBy: "createdAt",
         sortOrder: "desc",
         errorMessage: "Gagal memuat data user",
+        page: pagination.page,
+        limit: pagination.pageSize,
+        query: {
+          q: search,
+        },
       });
-      setRows(data);
+      setRows(result.data);
+      setPagination((previous) => ({
+        ...previous,
+        page: result.meta.page,
+        pageSize: result.meta.limit,
+        total: result.meta.total,
+        totalPages: result.meta.totalPages,
+      }));
     } catch (error) {
       console.error("[UserTable.loadUsers]", error);
       toast.error(error instanceof Error ? error.message : "Gagal memuat data user");
@@ -94,7 +113,7 @@ export function UserTable() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [pagination.page, pagination.pageSize, search]);
 
   useEffect(() => {
     void loadUsers();
@@ -102,12 +121,12 @@ export function UserTable() {
 
   const stats = useMemo(
     () => ({
-      total: rows.length,
+      total: pagination.total,
       active: rows.filter((item) => item.isActive).length,
       inactive: rows.filter((item) => !item.isActive).length,
       superAdmin: rows.filter((item) => item.role === "SUPER_ADMIN").length,
     }),
-    [rows],
+    [pagination.total, rows],
   );
 
   const columns = useMemo<ColumnDef<UserListItem>[]>(
@@ -364,17 +383,38 @@ export function UserTable() {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard description="Total akun terdaftar" icon={Users} title="Total User" value={stats.total} />
-        <StatCard description="Akun aktif" icon={UserCheck} title="Aktif" value={stats.active} />
-        <StatCard description="Akun nonaktif" icon={UserX} title="Nonaktif" value={stats.inactive} />
-        <StatCard description="Jumlah super admin" icon={ShieldCheck} title="Super Admin" value={stats.superAdmin} />
+        <StatCard description="Akun aktif di halaman aktif" icon={UserCheck} title="Aktif (Halaman)" value={stats.active} />
+        <StatCard description="Akun nonaktif di halaman aktif" icon={UserX} title="Nonaktif (Halaman)" value={stats.inactive} />
+        <StatCard description="Super admin di halaman aktif" icon={ShieldCheck} title="Super Admin (Halaman)" value={stats.superAdmin} />
       </div>
 
       <DataTable
         columns={columns}
         data={rows}
         isLoading={isLoading}
-        searchKey="username"
         searchPlaceholder="Cari username..."
+        searchValue={search}
+        onSearchChange={(value) => {
+          setSearch(value);
+          setPagination((previous) => ({
+            ...previous,
+            page: 1,
+          }));
+        }}
+        serverPagination={pagination}
+        onServerPageChange={(page) => {
+          setPagination((previous) => ({
+            ...previous,
+            page,
+          }));
+        }}
+        onServerPageSizeChange={(pageSize) => {
+          setPagination((previous) => ({
+            ...previous,
+            page: 1,
+            pageSize,
+          }));
+        }}
       />
 
       <Dialog onOpenChange={setOpenCreate} open={openCreate}>

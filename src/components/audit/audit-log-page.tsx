@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatEnumLabel, formatTanggalIndonesia } from "@/lib/format";
-import { fetchAllPages } from "@/lib/paginated-client-fetch";
+import { fetchPaginatedPage } from "@/lib/paginated-client-fetch";
 import type { AuditListItem } from "@/types/audit.types";
 
 type AuditFilter = {
@@ -38,16 +38,24 @@ export function AuditLogPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [draftFilter, setDraftFilter] = useState<AuditFilter>(EMPTY_FILTER);
   const [appliedFilter, setAppliedFilter] = useState<AuditFilter>(EMPTY_FILTER);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: 20,
+    total: 0,
+    totalPages: 1,
+  });
 
   const loadLogs = useCallback(async () => {
     setIsLoading(true);
 
     try {
-      const data = await fetchAllPages<AuditListItem>({
+      const result = await fetchPaginatedPage<AuditListItem>({
         endpoint: "/api/v1/audit-logs",
         sortBy: "createdAt",
         sortOrder: "desc",
         errorMessage: "Gagal memuat audit log",
+        page: pagination.page,
+        limit: pagination.pageSize,
         query: {
           q: appliedFilter.q,
           entity: appliedFilter.entity !== "all" ? appliedFilter.entity : undefined,
@@ -56,7 +64,14 @@ export function AuditLogPage() {
           toDate: appliedFilter.toDate,
         },
       });
-      setRows(data);
+      setRows(result.data);
+      setPagination((previous) => ({
+        ...previous,
+        page: result.meta.page,
+        pageSize: result.meta.limit,
+        total: result.meta.total,
+        totalPages: result.meta.totalPages,
+      }));
     } catch (error) {
       console.error("[AuditLogPage.loadLogs]", error);
       toast.error(error instanceof Error ? error.message : "Gagal memuat audit log");
@@ -64,7 +79,7 @@ export function AuditLogPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [appliedFilter]);
+  }, [appliedFilter, pagination.page, pagination.pageSize]);
 
   useEffect(() => {
     void loadLogs();
@@ -72,7 +87,7 @@ export function AuditLogPage() {
 
   const stats = useMemo(
     () => ({
-      total: rows.length,
+      total: pagination.total,
       uniqueUser: new Set(rows.map((item) => item.user.id)).size,
       uniqueEntity: new Set(rows.map((item) => item.entity)).size,
       today: rows.filter((item) => {
@@ -86,7 +101,7 @@ export function AuditLogPage() {
         );
       }).length,
     }),
-    [rows],
+    [pagination.total, rows],
   );
 
   const entityOptions = useMemo(() => {
@@ -214,11 +229,26 @@ export function AuditLogPage() {
         </div>
 
         <div className="mt-3 flex gap-2">
-          <Button onClick={() => setAppliedFilter({ ...draftFilter })} type="button">Terapkan Filter</Button>
+          <Button
+            onClick={() => {
+              setAppliedFilter({ ...draftFilter });
+              setPagination((previous) => ({
+                ...previous,
+                page: 1,
+              }));
+            }}
+            type="button"
+          >
+            Terapkan Filter
+          </Button>
           <Button
             onClick={() => {
               setDraftFilter({ ...EMPTY_FILTER });
               setAppliedFilter({ ...EMPTY_FILTER });
+              setPagination((previous) => ({
+                ...previous,
+                page: 1,
+              }));
             }}
             type="button"
             variant="outline"
@@ -228,7 +258,25 @@ export function AuditLogPage() {
         </div>
       </div>
 
-      <DataTable columns={columns} data={rows} isLoading={isLoading} searchKey="entity" searchPlaceholder="Cari entity..." />
+      <DataTable
+        columns={columns}
+        data={rows}
+        isLoading={isLoading}
+        serverPagination={pagination}
+        onServerPageChange={(page) => {
+          setPagination((previous) => ({
+            ...previous,
+            page,
+          }));
+        }}
+        onServerPageSizeChange={(pageSize) => {
+          setPagination((previous) => ({
+            ...previous,
+            page: 1,
+            pageSize,
+          }));
+        }}
+      />
     </div>
   );
 }

@@ -30,6 +30,17 @@ type DataTableProps<TData, TValue> = {
   columns: ColumnDef<TData, TValue>[];
   data: TData[];
   searchKey?: keyof TData & string;
+  searchValue?: string;
+  onSearchChange?: (value: string) => void;
+  serverPagination?: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+  onServerPageChange?: (page: number) => void;
+  onServerPageSizeChange?: (size: number) => void;
+  pageSizeOptions?: number[];
   searchPlaceholder?: string;
   isLoading?: boolean;
 };
@@ -38,13 +49,24 @@ export function DataTable<TData, TValue>({
   columns,
   data,
   searchKey,
+  searchValue = "",
+  onSearchChange,
+  serverPagination,
+  onServerPageChange,
+  onServerPageSizeChange,
+  pageSizeOptions = [10, 20, 50],
   searchPlaceholder = "Cari data...",
   isLoading = false,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [search, setSearch] = useState("");
+  const isServerMode = Boolean(serverPagination && onServerPageChange && onServerPageSizeChange);
 
   const filteredData = useMemo(() => {
+    if (isServerMode) {
+      return data;
+    }
+
     if (!searchKey || !search.trim()) {
       return data;
     }
@@ -52,35 +74,58 @@ export function DataTable<TData, TValue>({
     const query = search.trim().toLowerCase();
 
     return data.filter((item) => String(item[searchKey] ?? "").toLowerCase().includes(query));
-  }, [data, search, searchKey]);
+  }, [data, isServerMode, search, searchKey]);
+
+  const tableData = isServerMode ? data : filteredData;
 
   // TanStack Table manages internal mutable state; this hook is expected here.
   // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
-    data: filteredData,
+    data: tableData,
     columns,
     state: {
       sorting,
     },
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    initialState: {
-      pagination: {
-        pageIndex: 0,
-        pageSize: 10,
-      },
-    },
+    ...(isServerMode
+      ? {}
+      : {
+          getSortedRowModel: getSortedRowModel(),
+          getPaginationRowModel: getPaginationRowModel(),
+          initialState: {
+            pagination: {
+              pageIndex: 0,
+              pageSize: 10,
+            },
+          },
+        }),
   });
 
-  const pageSize = table.getState().pagination.pageSize;
-  const pageIndex = table.getState().pagination.pageIndex;
-  const pageCount = table.getPageCount();
+  const pageSize = isServerMode
+    ? (serverPagination?.pageSize ?? 10)
+    : table.getState().pagination.pageSize;
+  const pageIndex = isServerMode
+    ? ((serverPagination?.page ?? 1) - 1)
+    : table.getState().pagination.pageIndex;
+  const pageCount = isServerMode
+    ? Math.max(serverPagination?.totalPages ?? 1, 1)
+    : table.getPageCount();
+  const total = serverPagination?.total ?? tableData.length;
+  const start = total === 0 ? 0 : pageIndex * pageSize + 1;
+  const end = Math.min((pageIndex + 1) * pageSize, total);
 
   return (
     <div className="space-y-3">
-      {searchKey ? (
+      {isServerMode && onSearchChange ? (
+        <SearchInput
+          onChange={onSearchChange}
+          placeholder={searchPlaceholder}
+          value={searchValue}
+        />
+      ) : null}
+
+      {!isServerMode && searchKey ? (
         <SearchInput
           onChange={setSearch}
           placeholder={searchPlaceholder}
@@ -140,20 +185,38 @@ export function DataTable<TData, TValue>({
 
       <div className="flex flex-col gap-3 rounded-lg border bg-white px-3 py-2 md:flex-row md:items-center md:justify-between">
         <p className="text-sm text-slate-600">
-          Menampilkan halaman <span className="font-medium">{pageIndex + 1}</span> dari{" "}
-          <span className="font-medium">{Math.max(pageCount, 1)}</span>
+          {isServerMode ? (
+            <>
+              Menampilkan <span className="font-medium">{start}</span>-<span className="font-medium">{end}</span>{" "}
+              dari <span className="font-medium">{total}</span> data
+            </>
+          ) : (
+            <>
+              Menampilkan halaman <span className="font-medium">{pageIndex + 1}</span> dari{" "}
+              <span className="font-medium">{Math.max(pageCount, 1)}</span>
+            </>
+          )}
         </p>
 
         <div className="flex items-center gap-2">
           <Select
-            onValueChange={(value) => table.setPageSize(Number(value))}
+            onValueChange={(value) => {
+              const nextSize = Number(value);
+
+              if (isServerMode) {
+                onServerPageSizeChange?.(nextSize);
+                return;
+              }
+
+              table.setPageSize(nextSize);
+            }}
             value={String(pageSize)}
           >
             <SelectTrigger className="w-[100px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {[10, 20, 50].map((size) => (
+              {pageSizeOptions.map((size) => (
                 <SelectItem key={size} value={String(size)}>
                   {size} / page
                 </SelectItem>
@@ -162,16 +225,30 @@ export function DataTable<TData, TValue>({
           </Select>
 
           <Button
-            disabled={!table.getCanPreviousPage()}
-            onClick={() => table.previousPage()}
+            disabled={isServerMode ? pageIndex <= 0 : !table.getCanPreviousPage()}
+            onClick={() => {
+              if (isServerMode) {
+                onServerPageChange?.(Math.max(1, pageIndex));
+                return;
+              }
+
+              table.previousPage();
+            }}
             size="icon"
             variant="outline"
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <Button
-            disabled={!table.getCanNextPage()}
-            onClick={() => table.nextPage()}
+            disabled={isServerMode ? pageIndex + 1 >= pageCount : !table.getCanNextPage()}
+            onClick={() => {
+              if (isServerMode) {
+                onServerPageChange?.(Math.min(pageCount, pageIndex + 2));
+                return;
+              }
+
+              table.nextPage();
+            }}
             size="icon"
             variant="outline"
           >

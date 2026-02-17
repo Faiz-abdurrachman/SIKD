@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LABEL_MAP } from "@/lib/constants";
 import { formatTanggalIndonesia } from "@/lib/format";
-import { fetchAllPages } from "@/lib/paginated-client-fetch";
+import { fetchPaginatedPage } from "@/lib/paginated-client-fetch";
 import type { PendudukListItem } from "@/types/penduduk.types";
 
 type ErrorResponse = {
@@ -35,18 +35,37 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
   const [rows, setRows] = useState<PendudukListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<PendudukListItem | null>(null);
+  const [search, setSearch] = useState("");
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: 20,
+    total: 0,
+    totalPages: 1,
+  });
 
   const loadPenduduk = useCallback(async () => {
     setIsLoading(true);
 
     try {
-      const data = await fetchAllPages<PendudukListItem>({
+      const result = await fetchPaginatedPage<PendudukListItem>({
         endpoint: "/api/v1/penduduk",
         sortBy: "nama",
         sortOrder: "asc",
         errorMessage: "Gagal memuat data penduduk",
+        page: pagination.page,
+        limit: pagination.pageSize,
+        query: {
+          q: search,
+        },
       });
-      setRows(data);
+      setRows(result.data);
+      setPagination((previous) => ({
+        ...previous,
+        page: result.meta.page,
+        pageSize: result.meta.limit,
+        total: result.meta.total,
+        totalPages: result.meta.totalPages,
+      }));
     } catch (error) {
       console.error("[PendudukTable.loadPenduduk]", error);
       toast.error(error instanceof Error ? error.message : "Gagal memuat data penduduk");
@@ -54,7 +73,7 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [pagination.page, pagination.pageSize, search]);
 
   useEffect(() => {
     void loadPenduduk();
@@ -91,12 +110,12 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
 
   const stats = useMemo(
     () => ({
-      total: rows.length,
-      lakiLaki: rows.filter((item) => item.jenisKelamin === "LAKI_LAKI").length,
-      perempuan: rows.filter((item) => item.jenisKelamin === "PEREMPUAN").length,
-      nonAktif: rows.filter((item) => item.statusKependudukan !== "TETAP").length,
+      total: pagination.total,
+      lakiLakiPage: rows.filter((item) => item.jenisKelamin === "LAKI_LAKI").length,
+      perempuanPage: rows.filter((item) => item.jenisKelamin === "PEREMPUAN").length,
+      nonAktifPage: rows.filter((item) => item.statusKependudukan !== "TETAP").length,
     }),
-    [rows],
+    [pagination.total, rows],
   );
 
   const columns = useMemo<ColumnDef<PendudukListItem>[]>(
@@ -104,7 +123,11 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
       {
         id: "no",
         header: "No",
-        cell: ({ row }) => <span className="text-sm text-slate-600">{row.index + 1}</span>,
+        cell: ({ row }) => (
+          <span className="text-sm text-slate-600">
+            {(pagination.page - 1) * pagination.pageSize + row.index + 1}
+          </span>
+        ),
       },
       {
         accessorKey: "nama",
@@ -186,7 +209,7 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
         ),
       },
     ],
-    [canDelete, canUpdate],
+    [canDelete, canUpdate, pagination.page, pagination.pageSize],
   );
 
   return (
@@ -207,17 +230,38 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard description="Seluruh data penduduk tercatat" icon={Users} title="Total Penduduk" value={stats.total} />
-        <StatCard description="Jumlah penduduk laki-laki" icon={UserCheck} title="Laki-laki" value={stats.lakiLaki} />
-        <StatCard description="Jumlah penduduk perempuan" icon={VenusAndMars} title="Perempuan" value={stats.perempuan} />
-        <StatCard description="Status bukan tetap" icon={UserMinus} title="Non Aktif" value={stats.nonAktif} />
+        <StatCard description="Jumlah laki-laki di halaman aktif" icon={UserCheck} title="Laki-laki (Halaman)" value={stats.lakiLakiPage} />
+        <StatCard description="Jumlah perempuan di halaman aktif" icon={VenusAndMars} title="Perempuan (Halaman)" value={stats.perempuanPage} />
+        <StatCard description="Status bukan tetap di halaman aktif" icon={UserMinus} title="Non Aktif (Halaman)" value={stats.nonAktifPage} />
       </div>
 
       <DataTable
         columns={columns}
         data={rows}
         isLoading={isLoading}
-        searchKey="nama"
         searchPlaceholder="Cari nama penduduk..."
+        searchValue={search}
+        onSearchChange={(value) => {
+          setSearch(value);
+          setPagination((previous) => ({
+            ...previous,
+            page: 1,
+          }));
+        }}
+        serverPagination={pagination}
+        onServerPageChange={(page) => {
+          setPagination((previous) => ({
+            ...previous,
+            page,
+          }));
+        }}
+        onServerPageSizeChange={(pageSize) => {
+          setPagination((previous) => ({
+            ...previous,
+            page: 1,
+            pageSize,
+          }));
+        }}
       />
 
       <ConfirmDialog

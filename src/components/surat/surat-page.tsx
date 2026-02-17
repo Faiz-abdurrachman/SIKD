@@ -43,7 +43,7 @@ import {
   SURAT_JENIS_OPTIONS,
 } from "@/lib/surat-fields";
 import { formatEnumLabel, formatTanggalIndonesia } from "@/lib/format";
-import { fetchAllPages } from "@/lib/paginated-client-fetch";
+import { fetchAllPages, fetchPaginatedPage } from "@/lib/paginated-client-fetch";
 import type { SuratDetailResponse, SuratJenis, SuratListItem } from "@/types/surat.types";
 
 type ErrorResponse = {
@@ -127,6 +127,13 @@ async function parseErrorResponse(response: Response) {
 export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrint }: SuratPageProps) {
   const [rows, setRows] = useState<SuratListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: 20,
+    total: 0,
+    totalPages: 1,
+  });
 
   const [pendudukOptions, setPendudukOptions] = useState<PendudukOption[]>([]);
 
@@ -145,13 +152,25 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
     setIsLoading(true);
 
     try {
-      const data = await fetchAllPages<SuratListItem>({
+      const result = await fetchPaginatedPage<SuratListItem>({
         endpoint: "/api/v1/surat",
         sortBy: "tanggalSurat",
         sortOrder: "desc",
         errorMessage: "Gagal memuat data surat",
+        page: pagination.page,
+        limit: pagination.pageSize,
+        query: {
+          q: search,
+        },
       });
-      setRows(data);
+      setRows(result.data);
+      setPagination((previous) => ({
+        ...previous,
+        page: result.meta.page,
+        pageSize: result.meta.limit,
+        total: result.meta.total,
+        totalPages: result.meta.totalPages,
+      }));
     } catch (error) {
       console.error("[SuratPage.loadSurat]", error);
       toast.error(error instanceof Error ? error.message : "Gagal memuat data surat");
@@ -159,7 +178,7 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [pagination.page, pagination.pageSize, search]);
 
   const loadPendudukOptions = useCallback(async () => {
     try {
@@ -195,12 +214,12 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
 
   const stats = useMemo(
     () => ({
-      total: rows.length,
+      total: pagination.total,
       menunggu: rows.filter((item) => item.status === "MENUNGGU_PERSETUJUAN").length,
       disetujui: rows.filter((item) => item.status === "DISETUJUI").length,
       selesai: rows.filter((item) => item.status === "SELESAI").length,
     }),
-    [rows],
+    [pagination.total, rows],
   );
 
   const runPatchAction = useCallback(
@@ -670,17 +689,38 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard description="Total surat tercatat" icon={FileText} title="Total Surat" value={stats.total} />
-        <StatCard description="Menunggu persetujuan" icon={Send} title="Menunggu" value={stats.menunggu} />
-        <StatCard description="Surat sudah disetujui" icon={Check} title="Disetujui" value={stats.disetujui} />
-        <StatCard description="Surat selesai diproses" icon={CheckCircle2} title="Selesai" value={stats.selesai} />
+        <StatCard description="Menunggu persetujuan di halaman aktif" icon={Send} title="Menunggu (Halaman)" value={stats.menunggu} />
+        <StatCard description="Surat disetujui di halaman aktif" icon={Check} title="Disetujui (Halaman)" value={stats.disetujui} />
+        <StatCard description="Surat selesai di halaman aktif" icon={CheckCircle2} title="Selesai (Halaman)" value={stats.selesai} />
       </div>
 
       <DataTable
         columns={columns}
         data={rows}
         isLoading={isLoading}
-        searchKey="perihal"
         searchPlaceholder="Cari perihal surat..."
+        searchValue={search}
+        onSearchChange={(value) => {
+          setSearch(value);
+          setPagination((previous) => ({
+            ...previous,
+            page: 1,
+          }));
+        }}
+        serverPagination={pagination}
+        onServerPageChange={(page) => {
+          setPagination((previous) => ({
+            ...previous,
+            page,
+          }));
+        }}
+        onServerPageSizeChange={(pageSize) => {
+          setPagination((previous) => ({
+            ...previous,
+            page: 1,
+            pageSize,
+          }));
+        }}
       />
 
       <Dialog onOpenChange={setOpenCreate} open={openCreate}>

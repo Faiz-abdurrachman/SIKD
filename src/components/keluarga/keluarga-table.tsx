@@ -12,7 +12,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { fetchAllPages } from "@/lib/paginated-client-fetch";
+import { fetchPaginatedPage } from "@/lib/paginated-client-fetch";
 import type { KeluargaListItem } from "@/types/keluarga.types";
 
 type ErrorResponse = {
@@ -32,18 +32,37 @@ export function KeluargaTable({ canCreate, canUpdate, canDelete }: KeluargaTable
   const [rows, setRows] = useState<KeluargaListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<KeluargaListItem | null>(null);
+  const [search, setSearch] = useState("");
+  const [pagination, setPagination] = useState({
+    page: 1,
+    pageSize: 20,
+    total: 0,
+    totalPages: 1,
+  });
 
   const loadKeluarga = useCallback(async () => {
     setIsLoading(true);
 
     try {
-      const data = await fetchAllPages<KeluargaListItem>({
+      const result = await fetchPaginatedPage<KeluargaListItem>({
         endpoint: "/api/v1/keluarga",
         sortBy: "noKK",
         sortOrder: "asc",
         errorMessage: "Gagal memuat data keluarga",
+        page: pagination.page,
+        limit: pagination.pageSize,
+        query: {
+          q: search,
+        },
       });
-      setRows(data);
+      setRows(result.data);
+      setPagination((previous) => ({
+        ...previous,
+        page: result.meta.page,
+        pageSize: result.meta.limit,
+        total: result.meta.total,
+        totalPages: result.meta.totalPages,
+      }));
     } catch (error) {
       console.error("[KeluargaTable.loadKeluarga]", error);
       toast.error(error instanceof Error ? error.message : "Gagal memuat data keluarga");
@@ -51,7 +70,7 @@ export function KeluargaTable({ canCreate, canUpdate, canDelete }: KeluargaTable
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [pagination.page, pagination.pageSize, search]);
 
   useEffect(() => {
     void loadKeluarga();
@@ -91,19 +110,23 @@ export function KeluargaTable({ canCreate, canUpdate, canDelete }: KeluargaTable
     const totalTanpaKepala = rows.filter((item) => !item.kepalaKeluarga).length;
 
     return {
-      totalKeluarga: rows.length,
+      totalKeluarga: pagination.total,
       totalAnggota,
       rataRataAnggota: rows.length ? (totalAnggota / rows.length).toFixed(1) : "0.0",
       tanpaKepala: totalTanpaKepala,
     };
-  }, [rows]);
+  }, [pagination.total, rows]);
 
   const columns = useMemo<ColumnDef<KeluargaListItem>[]>(
     () => [
       {
         id: "no",
         header: "No",
-        cell: ({ row }) => <span className="text-sm text-slate-600">{row.index + 1}</span>,
+        cell: ({ row }) => (
+          <span className="text-sm text-slate-600">
+            {(pagination.page - 1) * pagination.pageSize + row.index + 1}
+          </span>
+        ),
       },
       {
         accessorKey: "noKK",
@@ -179,7 +202,7 @@ export function KeluargaTable({ canCreate, canUpdate, canDelete }: KeluargaTable
         ),
       },
     ],
-    [canDelete, canUpdate],
+    [canDelete, canUpdate, pagination.page, pagination.pageSize],
   );
 
   return (
@@ -200,17 +223,38 @@ export function KeluargaTable({ canCreate, canUpdate, canDelete }: KeluargaTable
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard description="Total kartu keluarga terdaftar" icon={Home} title="Total KK" value={stats.totalKeluarga} />
-        <StatCard description="Jumlah anggota dari seluruh KK" icon={Users} title="Total Anggota" value={stats.totalAnggota} />
-        <StatCard description="Rata-rata anggota per KK" icon={UserRound} title="Rata-rata/KK" value={stats.rataRataAnggota} />
-        <StatCard description="KK tanpa kepala keluarga" icon={UserRound} title="Belum Ada Kepala" value={stats.tanpaKepala} />
+        <StatCard description="Jumlah anggota di halaman aktif" icon={Users} title="Anggota (Halaman)" value={stats.totalAnggota} />
+        <StatCard description="Rata-rata anggota di halaman aktif" icon={UserRound} title="Rata-rata (Halaman)" value={stats.rataRataAnggota} />
+        <StatCard description="KK tanpa kepala keluarga di halaman aktif" icon={UserRound} title="Tanpa Kepala (Halaman)" value={stats.tanpaKepala} />
       </div>
 
       <DataTable
         columns={columns}
         data={rows}
         isLoading={isLoading}
-        searchKey="noKK"
         searchPlaceholder="Cari nomor KK..."
+        searchValue={search}
+        onSearchChange={(value) => {
+          setSearch(value);
+          setPagination((previous) => ({
+            ...previous,
+            page: 1,
+          }));
+        }}
+        serverPagination={pagination}
+        onServerPageChange={(page) => {
+          setPagination((previous) => ({
+            ...previous,
+            page,
+          }));
+        }}
+        onServerPageSizeChange={(pageSize) => {
+          setPagination((previous) => ({
+            ...previous,
+            page: 1,
+            pageSize,
+          }));
+        }}
       />
 
       <ConfirmDialog

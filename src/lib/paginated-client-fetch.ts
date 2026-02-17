@@ -5,15 +5,17 @@ type ErrorResponse = {
   };
 };
 
+export type PaginationMeta = {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+};
+
 type PaginatedResponse<T> = {
   success: true;
   data: T[];
-  meta: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  };
+  meta: PaginationMeta;
 };
 
 type QueryValue = string | number | boolean | null | undefined;
@@ -81,6 +83,49 @@ function resolveErrorMessage(payload: unknown, fallback: string) {
   return fallback;
 }
 
+type FetchPaginatedPageOptions = {
+  endpoint: string;
+  sortBy: string;
+  sortOrder: "asc" | "desc";
+  errorMessage: string;
+  query?: Record<string, QueryValue>;
+  page?: number;
+  limit?: number;
+  cache?: RequestCache;
+};
+
+export async function fetchPaginatedPage<T>({
+  endpoint,
+  sortBy,
+  sortOrder,
+  errorMessage,
+  query,
+  page = 1,
+  limit = 20,
+  cache = "no-store",
+}: FetchPaginatedPageOptions): Promise<{ data: T[]; meta: PaginationMeta }> {
+  const safePage = Math.max(1, Math.trunc(page));
+  const safeLimit = Math.min(Math.max(1, Math.trunc(limit)), MAX_LIMIT);
+  const queryString = createQueryString(safePage, safeLimit, sortBy, sortOrder, query);
+  const response = await fetch(`${endpoint}?${queryString}`, { cache });
+  let payload: PaginatedResponse<T> | ErrorResponse;
+
+  try {
+    payload = (await response.json()) as PaginatedResponse<T> | ErrorResponse;
+  } catch {
+    throw new Error(`${errorMessage} (respon server tidak valid)`);
+  }
+
+  if (!response.ok || !payload.success) {
+    throw new Error(resolveErrorMessage(payload, errorMessage));
+  }
+
+  return {
+    data: payload.data,
+    meta: payload.meta,
+  };
+}
+
 export async function fetchAllPages<T>({
   endpoint,
   sortBy,
@@ -96,22 +141,19 @@ export async function fetchAllPages<T>({
   let totalPages = 1;
 
   while (page <= totalPages && page <= MAX_PAGES) {
-    const queryString = createQueryString(page, pageSize, sortBy, sortOrder, query);
-    const response = await fetch(`${endpoint}?${queryString}`, { cache });
-    let payload: PaginatedResponse<T> | ErrorResponse;
+    const result = await fetchPaginatedPage<T>({
+      endpoint,
+      sortBy,
+      sortOrder,
+      errorMessage,
+      query,
+      page,
+      limit: pageSize,
+      cache,
+    });
 
-    try {
-      payload = (await response.json()) as PaginatedResponse<T> | ErrorResponse;
-    } catch {
-      throw new Error(`${errorMessage} (respon server tidak valid)`);
-    }
-
-    if (!response.ok || !payload.success) {
-      throw new Error(resolveErrorMessage(payload, errorMessage));
-    }
-
-    allRows.push(...payload.data);
-    totalPages = Math.max(1, payload.meta.totalPages);
+    allRows.push(...result.data);
+    totalPages = Math.max(1, result.meta.totalPages);
     page += 1;
   }
 
