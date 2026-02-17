@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "vercel-build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "test:e2e": "playwright test",
@@ -18,6 +19,9 @@
     "deploy:prod": "bash scripts/deploy.sh",
     "backup:db": "bash scripts/backup.sh",
     "restore:db": "bash scripts/restore.sh",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:seed": "prisma db seed",
+    "postinstall": "prisma generate",
     "verify:seed-users": "node scripts/verify-seed-users.mjs"
   },
   "engines": {

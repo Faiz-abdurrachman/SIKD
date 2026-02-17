@@ -1,6 +1,7 @@
-# Tutorial Deploy SIDESA di Arch Linux (Dari Nol Sampai Auto Deploy)
+# Tutorial Deploy SIDESA di Arch Linux (Opsional VPS Self-Hosting)
 
 Dokumen ini dibuat untuk pemula total. Ikuti urutan dari atas ke bawah, jangan lompat step.
+Gunakan panduan ini jika kamu memang memilih mode VPS; untuk mode paling cepat dan hemat, pakai `TUTORIAL-VERCEL-0-SAMPAI-LIVE.md`.
 
 Tujuan akhir:
 1. Aplikasi SIDESA bisa jalan di VPS Arch Linux.

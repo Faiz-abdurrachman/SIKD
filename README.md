@@ -180,39 +180,59 @@ npx tsc --noEmit
 npm run build
 ```
 
-## 9. Production Docker
+## 9. Mode Deploy (Pilih Salah Satu)
 
-Build:
+1. `Vercel + Managed PostgreSQL` (direkomendasikan untuk cepat online dan biaya rendah).
+2. `VPS + Docker` (opsional jika butuh full kontrol server).
 
-```bash
-npm run docker:build
-```
+Catatan:
+1. Default dokumentasi setelah ini fokus `Vercel`.
+2. Flow `VPS` tetap tersedia sebagai opsi manual.
 
-Up:
+## 10. Deploy ke Vercel (Direkomendasikan)
 
-```bash
-npm run docker:up
-```
+Panduan lengkap: `TUTORIAL-VERCEL-0-SAMPAI-LIVE.md`
 
-Apply migration di container:
-
-```bash
-docker compose -f docker/docker-compose.yml run --rm app npx prisma migrate deploy
-```
-
-Logs:
+Ringkasan langkah:
+1. Buat database PostgreSQL managed (Neon/Supabase/Railway).
+2. Ambil connection string dan set sebagai `DATABASE_URL`.
+3. Jalankan migrate ke DB production:
 
 ```bash
-npm run docker:logs
+DATABASE_URL="postgresql://..." npx prisma migrate deploy
 ```
 
-Down:
+4. Opsional seed data awal:
 
 ```bash
-npm run docker:down
+DATABASE_URL="postgresql://..." npx prisma db seed
 ```
 
-## 10. Deploy Script
+5. Import repo ke Vercel.
+6. Set `Root Directory` ke `sidesa`.
+7. Set Build Command ke:
+
+```bash
+npm run vercel-build
+```
+
+8. Isi Environment Variables di Vercel:
+   - `DATABASE_URL`
+   - `NEXTAUTH_SECRET`
+   - `NEXTAUTH_URL` (isi domain Vercel kamu, format `https://...`)
+   - `NEXT_PUBLIC_APP_NAME`
+   - `NEXT_PUBLIC_APP_VERSION`
+   - `NEXT_PUBLIC_DESA_NAME`
+
+Script yang sudah disiapkan untuk Vercel:
+1. `npm run vercel-build`
+2. `postinstall` otomatis menjalankan `prisma generate`
+
+## 11. Deploy VPS + Docker (Opsional)
+
+Untuk self-hosting full server:
+1. Tutorial lengkap Arch Linux: `TUTORIAL-DEPLOY-ARCH-LINUX-LENGKAP.md`
+2. Deploy manual:
 
 ```bash
 npm run deploy:prod
@@ -224,20 +244,23 @@ atau:
 bash scripts/deploy.sh
 ```
 
-## 11. GitHub Actions Deploy
+Workflow VPS di GitHub:
+1. File: `.github/workflows/deploy.yml`
+2. Mode: `workflow_dispatch` (manual trigger, tidak auto jalan tiap push)
+3. Secret yang diperlukan:
+   - `VPS_HOST`
+   - `VPS_USER`
+   - `VPS_SSH_KEY`
+   - `VPS_PROJECT_PATH`
 
-Workflow: `.github/workflows/deploy.yml`
+## 12. CI Workflow
 
-Set secret berikut di repository:
+1. `CI Smoke`: `.github/workflows/ci-smoke.yml`
+   - lint + typecheck + seed verify + e2e smoke.
+2. `Deploy VPS (Manual)`: `.github/workflows/deploy.yml`
+   - hanya untuk self-host VPS.
 
-- `VPS_HOST`
-- `VPS_USER`
-- `VPS_SSH_KEY`
-- `VPS_PROJECT_PATH`
-
-Jika gagal dengan `missing server host`, berarti `VPS_HOST` belum terisi atau salah nama.
-
-## 12. Backup / Restore
+## 13. Backup / Restore (Mode VPS)
 
 Backup:
 
@@ -257,83 +280,21 @@ Restore:
 npm run restore:db -- ./backups/<nama-file>.sql.gz
 ```
 
-## 13. Troubleshooting
-
-### 13.1 `P1010: User was denied access`
-
-1. Cek `DATABASE_URL` benar.
-2. Cek role/db/privilege sudah dibuat.
-3. Pastikan password di `DATABASE_URL` sama dengan password role PostgreSQL.
-
-### 13.2 `P3014: permission denied to create database`
-
-```sql
-ALTER ROLE sidesa CREATEDB;
-```
-
-### 13.3 Seed sukses tapi akun `kades/sekdes/operator` tidak bisa login
-
-Lakukan urutan ini:
-
-1. Pastikan login pakai `username`, bukan email.
-2. Jalankan `npm run verify:seed-users`.
-3. Samakan `DATABASE_URL` di `.env` dan `.env.local`.
-4. Logout akun admin dulu atau buka incognito (hindari session cache lama).
-5. Reseed:
-
-```bash
-npx prisma db seed
-npm run verify:seed-users
-```
-
-### 13.4 Build error / crash
-
-```bash
-rm -rf node_modules package-lock.json .next
-npm install
-npm run build
-```
-
-### 13.5 Build/dev terasa berat
-
-1. Pastikan Node `20.x`.
-2. Tutup tab/browser yang tidak perlu.
-3. Jalankan production mode untuk test performa:
-
-```bash
-npm run build
-npm run start
-```
-
-### 13.6 Akun terkunci sementara
-
-Jika butuh buka kunci akun lebih cepat, jalankan SQL ini:
-
-```sql
-UPDATE users
-SET
-  failed_login_attempts = 0,
-  last_failed_login_at = NULL,
-  locked_until = NULL
-WHERE username = 'kades';
-```
-
 ## 14. E2E Smoke Test (Playwright)
 
 E2E smoke test sudah disiapkan untuk validasi:
-
 1. Redirect auth (guest wajib ke `/login`).
 2. Login gagal menampilkan error.
 3. Login + RBAC menu/route untuk 4 role (`admin`, `kades`, `sekdes`, `operator`).
 4. Cek modul utama tanpa console error `Parameter pencarian tidak valid`.
 
-### 14.1 Install browser E2E (sekali per mesin)
+Install browser E2E (sekali per mesin):
 
 ```bash
 npm run test:e2e:install
 ```
 
-### 14.2 Jalankan E2E smoke test
+Jalankan E2E smoke test:
 
 ```bash
 npm run test:e2e
@@ -352,12 +313,10 @@ npm run test:e2e:ui
 ```
 
 Output report:
-
-- HTML report: `playwright-report/index.html`
-- Raw result: `test-results/`
+1. HTML report: `playwright-report/index.html`
+2. Raw result: `test-results/`
 
 Catatan:
-
 1. Jalankan migrate + seed dulu (`npx prisma migrate dev` dan `npx prisma db seed`).
 2. Default credential E2E mengikuti seed.
 3. Bisa override credential via env:
@@ -366,14 +325,87 @@ Catatan:
    - `E2E_SEKDES_USERNAME`, `E2E_SEKDES_PASSWORD`
    - `E2E_OPERATOR_USERNAME`, `E2E_OPERATOR_PASSWORD`
 
-## 15. Struktur Deploy
+## 15. Troubleshooting
 
-- Dockerfile: `docker/Dockerfile`
-- Compose: `docker/docker-compose.yml`
-- Nginx: `docker/nginx.conf`
-- Deploy script: `scripts/deploy.sh`
-- Backup script: `scripts/backup.sh`
-- Restore script: `scripts/restore.sh`
+### 15.1 `P1010: User was denied access`
+
+1. Cek `DATABASE_URL` benar.
+2. Cek role/db/privilege sudah dibuat.
+3. Pastikan password di `DATABASE_URL` sama dengan password role PostgreSQL.
+
+### 15.2 `P3014: permission denied to create database`
+
+```sql
+ALTER ROLE sidesa CREATEDB;
+```
+
+### 15.3 Seed sukses tapi akun `kades/sekdes/operator` tidak bisa login
+
+Lakukan urutan ini:
+1. Pastikan login pakai `username`, bukan email.
+2. Jalankan `npm run verify:seed-users`.
+3. Samakan `DATABASE_URL` di `.env` dan `.env.local`.
+4. Logout akun admin dulu atau buka incognito (hindari session cache lama).
+5. Reseed:
+
+```bash
+npx prisma db seed
+npm run verify:seed-users
+```
+
+### 15.4 Build error / crash
+
+```bash
+rm -rf node_modules package-lock.json .next
+npm install
+npm run build
+```
+
+### 15.5 Build/dev terasa berat
+
+1. Pastikan Node `20.x`.
+2. Tutup tab/browser yang tidak perlu.
+3. Jalankan production mode untuk test performa:
+
+```bash
+npm run build
+npm run start
+```
+
+### 15.6 Akun terkunci sementara
+
+Jika butuh buka kunci akun lebih cepat, jalankan SQL ini:
+
+```sql
+UPDATE users
+SET
+  failed_login_attempts = 0,
+  last_failed_login_at = NULL,
+  locked_until = NULL
+WHERE username = 'kades';
+```
+
+### 15.7 Deploy Vercel error koneksi DB
+
+1. Pastikan `DATABASE_URL` di Vercel benar dan bukan localhost.
+2. Pastikan whitelist IP / network rule provider DB mengizinkan koneksi dari Vercel.
+3. Jalankan ulang migrate:
+
+```bash
+DATABASE_URL="postgresql://..." npx prisma migrate deploy
+```
+
+## 16. Struktur Deploy
+
+File utama:
+1. Dockerfile: `docker/Dockerfile`
+2. Compose: `docker/docker-compose.yml`
+3. Nginx: `docker/nginx.conf`
+4. Deploy script: `scripts/deploy.sh`
+5. Backup script: `scripts/backup.sh`
+6. Restore script: `scripts/restore.sh`
+7. CI smoke: `.github/workflows/ci-smoke.yml`
+8. Deploy VPS manual: `.github/workflows/deploy.yml`
 
 ## License
 
