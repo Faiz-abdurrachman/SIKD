@@ -7,6 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "docker:build": "docker compose -f docker/docker-compose.yml build",
+    "docker:up": "docker compose -f docker/docker-compose.yml up -d",
+    "docker:down": "docker compose -f docker/docker-compose.yml down",
+    "docker:logs": "docker compose -f docker/docker-compose.yml logs -f --tail=200",
+    "deploy:prod": "bash scripts/deploy.sh",
     "backup:db": "bash scripts/backup.sh",
     "restore:db": "bash scripts/restore.sh"
   },
