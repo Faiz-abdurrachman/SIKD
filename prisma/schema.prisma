@@ -129,6 +129,9 @@ model User {
   role          UserRole  @default(OPERATOR)
   isActive      Boolean   @default(true) @map("is_active")
   lastLoginAt   DateTime? @map("last_login_at")
+  failedLoginAttempts Int      @default(0) @map("failed_login_attempts")
+  lastFailedLoginAt   DateTime? @map("last_failed_login_at")
+  lockedUntil         DateTime? @map("locked_until")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
@@ -137,6 +140,7 @@ model User {
   auditLogs     AuditLog[]
   sessions      Session[]
 
+  @@index([lockedUntil])
   @@map("users")
 }
 

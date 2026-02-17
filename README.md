@@ -162,6 +162,16 @@ Gunakan username (bukan email):
 - `sekdes / User@2026` (Sekretaris)
 - `operator / User@2026` (Operator)
 
+## 7.1 Kebijakan Keamanan Login
+
+Sistem menerapkan hardening login:
+
+1. Username login tidak case-sensitive (`KADES` dianggap sama dengan `kades`).
+2. Setelah 5 kali gagal login berturut-turut pada akun yang sama, akun dikunci sementara 15 menit.
+3. Event keamanan login dicatat ke `Audit Log` dengan entity `auth`.
+
+Jika akun terkunci karena salah password berulang, tunggu 15 menit lalu coba lagi.
+
 ## 8. Quality Check (wajib clean)
 
 ```bash
@@ -293,6 +303,19 @@ npm run build
 ```bash
 npm run build
 npm run start
+```
+
+### 13.6 Akun terkunci sementara
+
+Jika butuh buka kunci akun lebih cepat, jalankan SQL ini:
+
+```sql
+UPDATE users
+SET
+  failed_login_attempts = 0,
+  last_failed_login_at = NULL,
+  locked_until = NULL
+WHERE username = 'kades';
 ```
 
 ## 14. Struktur Deploy

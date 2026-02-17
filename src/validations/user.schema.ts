@@ -11,9 +11,11 @@ export const passwordSchema = z
 export const createUserSchema = z.object({
   username: z
     .string()
+    .trim()
     .min(3, "Username minimal 3 karakter")
     .max(30, "Username maksimal 30 karakter")
-    .regex(/^[a-zA-Z0-9_]+$/, "Username hanya boleh huruf, angka, underscore"),
+    .regex(/^[a-zA-Z0-9_]+$/, "Username hanya boleh huruf, angka, underscore")
+    .transform((value) => value.toLowerCase()),
   nama: z.string().min(3, "Nama minimal 3 karakter").max(100, "Nama maksimal 100 karakter"),
   email: z.string().email("Format email tidak valid").optional().or(z.literal("")),
   password: passwordSchema,
