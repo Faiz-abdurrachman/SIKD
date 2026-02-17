@@ -121,26 +121,30 @@ enum JenisMutasi {
 // ═══════════════════════════════════════════════════════
 
 model User {
-  id            String    @id @default(cuid())
-  username      String    @unique
-  email         String?   @unique
-  passwordHash  String    @map("password_hash")
-  nama          String
-  role          UserRole  @default(OPERATOR)
-  isActive      Boolean   @default(true) @map("is_active")
-  lastLoginAt   DateTime? @map("last_login_at")
-  failedLoginAttempts Int      @default(0) @map("failed_login_attempts")
+  id                  String    @id @default(cuid())
+  username            String    @unique
+  email               String?   @unique
+  passwordHash        String    @map("password_hash")
+  nama                String
+  role                UserRole  @default(OPERATOR)
+  isActive            Boolean   @default(true) @map("is_active")
+  lastLoginAt         DateTime? @map("last_login_at")
+  failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
   lastFailedLoginAt   DateTime? @map("last_failed_login_at")
   lockedUntil         DateTime? @map("locked_until")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
 
-  suratCreated  Surat[]     @relation("SuratCreator")
-  suratApproved Surat[]     @relation("SuratApprover")
+  suratCreated  Surat[]    @relation("SuratCreator")
+  suratApproved Surat[]    @relation("SuratApprover")
   auditLogs     AuditLog[]
   sessions      Session[]
 
-  @@index([lockedUntil])
+  @@index([lockedUntil], map: "users_locked_until_idx")
+  @@index([role], map: "users_role_idx")
+  @@index([isActive], map: "users_is_active_idx")
+  @@index([createdAt], map: "users_created_at_idx")
+  @@index([lastLoginAt], map: "users_last_login_at_idx")
   @@map("users")
 }
 
@@ -234,11 +238,13 @@ model Keluarga {
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  rt             RT        @relation(fields: [rtId], references: [id])
-  kepalaKeluarga Penduduk? @relation("KepalaKeluarga", fields: [kepalaKeluargaId], references: [id])
+  rt             RT         @relation(fields: [rtId], references: [id])
+  kepalaKeluarga Penduduk?  @relation("KepalaKeluarga", fields: [kepalaKeluargaId], references: [id])
   anggota        Penduduk[] @relation("AnggotaKeluarga")
 
-  @@index([noKK])
+  @@index([rtId], map: "keluarga_rt_id_idx")
+  @@index([createdAt], map: "keluarga_created_at_idx")
+  @@index([updatedAt], map: "keluarga_updated_at_idx")
   @@map("keluarga")
 }
 
@@ -272,9 +278,14 @@ model Penduduk {
   suratPenduduk      SuratPenduduk[]
   mutasiKeluar       Mutasi[]        @relation("MutasiPenduduk")
 
-  @@index([nik])
   @@index([nama])
   @@index([keluargaId])
+  @@index([statusKependudukan], map: "penduduk_status_kependudukan_idx")
+  @@index([tanggalLahir], map: "penduduk_tanggal_lahir_idx")
+  @@index([createdAt], map: "penduduk_created_at_idx")
+  @@index([updatedAt], map: "penduduk_updated_at_idx")
+  @@index([statusKependudukan, nama], map: "penduduk_status_kependudukan_nama_idx")
+  @@index([keluargaId, nama], map: "penduduk_keluarga_id_nama_idx")
   @@map("penduduk")
 }
 
@@ -304,10 +315,14 @@ model Surat {
   approvedBy   User?           @relation("SuratApprover", fields: [approvedById], references: [id])
   pendudukList SuratPenduduk[]
 
-  @@index([nomorSurat])
   @@index([jenisSurat])
   @@index([status])
   @@index([tanggalSurat])
+  @@index([createdAt], map: "surat_created_at_idx")
+  @@index([updatedAt], map: "surat_updated_at_idx")
+  @@index([status, tanggalSurat], map: "surat_status_tanggal_surat_idx")
+  @@index([jenisSurat, tanggalSurat], map: "surat_jenis_surat_tanggal_surat_idx")
+  @@index([createdById], map: "surat_created_by_id_idx")
   @@map("surat")
 }
 
@@ -321,6 +336,8 @@ model SuratPenduduk {
   penduduk Penduduk @relation(fields: [pendudukId], references: [id])
 
   @@unique([suratId, pendudukId, peran])
+  @@index([pendudukId], map: "surat_penduduk_penduduk_id_idx")
+  @@index([suratId], map: "surat_penduduk_surat_id_idx")
   @@map("surat_penduduk")
 }
 
@@ -339,29 +356,32 @@ model NomorSuratCounter {
 // ═══════════════════════════════════════════════════════
 
 model Mutasi {
-  id               String      @id @default(cuid())
-  jenisMutasi      JenisMutasi @map("jenis_mutasi")
-  pendudukId       String      @map("penduduk_id")
-  tanggalMutasi    DateTime    @map("tanggal_mutasi")
-  keterangan       String?
+  id            String      @id @default(cuid())
+  jenisMutasi   JenisMutasi @map("jenis_mutasi")
+  pendudukId    String      @map("penduduk_id")
+  tanggalMutasi DateTime    @map("tanggal_mutasi")
+  keterangan    String?
 
-  alamatTujuan     String?     @map("alamat_tujuan")
-  alamatAsal       String?     @map("alamat_asal")
-  alasanPindah     String?     @map("alasan_pindah")
+  alamatTujuan String? @map("alamat_tujuan")
+  alamatAsal   String? @map("alamat_asal")
+  alasanPindah String? @map("alasan_pindah")
 
-  tempatLahir      String?     @map("tempat_lahir_mutasi")
-  namaAyah         String?     @map("nama_ayah_mutasi")
-  namaIbu          String?     @map("nama_ibu_mutasi")
+  tempatLahir String? @map("tempat_lahir_mutasi")
+  namaAyah    String? @map("nama_ayah_mutasi")
+  namaIbu     String? @map("nama_ibu_mutasi")
 
-  penyebabKematian String?     @map("penyebab_kematian")
-  tempatKematian   String?     @map("tempat_kematian")
+  penyebabKematian String? @map("penyebab_kematian")
+  tempatKematian   String? @map("tempat_kematian")
 
-  createdAt        DateTime    @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at")
 
   penduduk Penduduk @relation("MutasiPenduduk", fields: [pendudukId], references: [id])
 
   @@index([jenisMutasi])
   @@index([tanggalMutasi])
+  @@index([pendudukId], map: "mutasi_penduduk_id_idx")
+  @@index([createdAt], map: "mutasi_created_at_idx")
+  @@index([jenisMutasi, tanggalMutasi], map: "mutasi_jenis_mutasi_tanggal_mutasi_idx")
   @@map("mutasi")
 }
 
@@ -386,6 +406,10 @@ model AuditLog {
   @@index([userId])
   @@index([entity, entityId])
   @@index([createdAt])
+  @@index([action], map: "audit_logs_action_idx")
+  @@index([entity], map: "audit_logs_entity_idx")
+  @@index([action, createdAt], map: "audit_logs_action_created_at_idx")
+  @@index([entity, createdAt], map: "audit_logs_entity_created_at_idx")
   @@map("audit_logs")
 }
 
