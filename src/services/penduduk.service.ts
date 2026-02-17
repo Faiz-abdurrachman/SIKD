@@ -226,26 +226,36 @@ export const pendudukService = {
   },
 
   async search(query: string) {
-    if (!query.trim()) {
+    const normalizedQuery = query.trim();
+
+    if (!normalizedQuery) {
       return [];
     }
 
     const data = await prisma.penduduk.findMany({
       where: {
         OR: [
-          { nik: { contains: query, mode: "insensitive" } },
-          { nama: { contains: query, mode: "insensitive" } },
+          { nik: { contains: normalizedQuery, mode: "insensitive" } },
+          { nama: { contains: normalizedQuery, mode: "insensitive" } },
         ],
       },
-      include: pendudukListInclude,
+      select: {
+        id: true,
+        nik: true,
+        nama: true,
+        statusHubungan: true,
+        statusKependudukan: true,
+        keluarga: {
+          select: {
+            noKK: true,
+          },
+        },
+      },
       orderBy: { nama: "asc" },
       take: 20,
     });
 
-    return data.map((item) => ({
-      ...item,
-      alamatLengkap: buildAlamatLengkap(item),
-    }));
+    return data;
   },
 
   async create(data: CreatePendudukInput, actorUserId: string, meta?: RequestMeta) {

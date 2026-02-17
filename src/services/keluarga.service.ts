@@ -234,6 +234,39 @@ export const keluargaService = {
     return mapDetailItem(keluarga);
   },
 
+  async search(query: string, limit = 20) {
+    const normalizedQuery = query.trim();
+
+    if (!normalizedQuery) {
+      return [];
+    }
+
+    const safeLimit = Math.min(Math.max(limit, 1), 50);
+
+    return prisma.keluarga.findMany({
+      where: {
+        OR: [
+          { noKK: { contains: normalizedQuery, mode: "insensitive" } },
+          { alamat: { contains: normalizedQuery, mode: "insensitive" } },
+          { kepalaKeluarga: { nama: { contains: normalizedQuery, mode: "insensitive" } } },
+        ],
+      },
+      select: {
+        id: true,
+        noKK: true,
+        kepalaKeluarga: {
+          select: {
+            nama: true,
+          },
+        },
+      },
+      orderBy: {
+        noKK: "asc",
+      },
+      take: safeLimit,
+    });
+  },
+
   async create(data: CreateKeluargaInput, actorUserId: string, meta?: RequestMeta) {
     const kepalaKeluargaId = toNullableId(data.kepalaKeluargaId);
 

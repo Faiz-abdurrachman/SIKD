@@ -55,3 +55,10 @@ export type DashboardRecentSurat = Array<{
     nama: string;
   };
 }>;
+
+export type DashboardOverviewData = {
+  stats: DashboardStats;
+  demografi: DashboardDemografi;
+  recentMutasi: DashboardRecentMutasi;
+  recentSurat: DashboardRecentSurat;
+};

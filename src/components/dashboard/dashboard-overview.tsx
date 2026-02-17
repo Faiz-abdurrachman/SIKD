@@ -25,6 +25,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { formatEnumLabel, formatTanggalIndonesia } from "@/lib/format";
 import type {
   DashboardDemografi,
+  DashboardOverviewData,
   DashboardRecentMutasi,
   DashboardRecentSurat,
   DashboardStats,
@@ -64,47 +65,17 @@ export function DashboardOverview({ namaUser }: { namaUser: string }) {
     setIsLoading(true);
 
     try {
-      const [statsRes, demografiRes, mutasiRes, suratRes] = await Promise.all([
-        fetch("/api/v1/dashboard/stats", { cache: "no-store" }),
-        fetch("/api/v1/dashboard/demografi", { cache: "no-store" }),
-        fetch("/api/v1/dashboard/recent-mutasi?limit=5", { cache: "no-store" }),
-        fetch("/api/v1/dashboard/recent-surat?limit=5", { cache: "no-store" }),
-      ]);
+      const response = await fetch("/api/v1/dashboard/overview?limit=5", { cache: "no-store" });
+      const payload = (await response.json()) as { success: true; data: DashboardOverviewData } | ErrorResponse;
 
-      const [statsBody, demografiBody, mutasiBody, suratBody] = (await Promise.all([
-        statsRes.json(),
-        demografiRes.json(),
-        mutasiRes.json(),
-        suratRes.json(),
-      ])) as [
-        { success: true; data: DashboardStats } | ErrorResponse,
-        { success: true; data: DashboardDemografi } | ErrorResponse,
-        { success: true; data: DashboardRecentMutasi } | ErrorResponse,
-        { success: true; data: DashboardRecentSurat } | ErrorResponse,
-      ];
-
-      if (!statsRes.ok || !statsBody.success) {
-        throw new Error(statsBody.success ? "Gagal memuat statistik" : (statsBody.error?.message ?? "Gagal memuat statistik"));
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.success ? "Gagal memuat data dashboard" : (payload.error?.message ?? "Gagal memuat data dashboard"));
       }
 
-      if (!demografiRes.ok || !demografiBody.success) {
-        throw new Error(
-          demografiBody.success ? "Gagal memuat data demografi" : (demografiBody.error?.message ?? "Gagal memuat data demografi"),
-        );
-      }
-
-      if (!mutasiRes.ok || !mutasiBody.success) {
-        throw new Error(mutasiBody.success ? "Gagal memuat mutasi terbaru" : (mutasiBody.error?.message ?? "Gagal memuat mutasi terbaru"));
-      }
-
-      if (!suratRes.ok || !suratBody.success) {
-        throw new Error(suratBody.success ? "Gagal memuat surat terbaru" : (suratBody.error?.message ?? "Gagal memuat surat terbaru"));
-      }
-
-      setStats(statsBody.data);
-      setDemografi(demografiBody.data);
-      setRecentMutasi(mutasiBody.data);
-      setRecentSurat(suratBody.data);
+      setStats(payload.data.stats);
+      setDemografi(payload.data.demografi);
+      setRecentMutasi(payload.data.recentMutasi);
+      setRecentSurat(payload.data.recentSurat);
     } catch (error) {
       console.error("[DashboardOverview.loadData]", error);
       toast.error(error instanceof Error ? error.message : "Gagal memuat dashboard");

@@ -66,7 +66,14 @@ export const auditLogService = {
     const [data, total] = await prisma.$transaction([
       prisma.auditLog.findMany({
         where,
-        include: {
+        select: {
+          id: true,
+          action: true,
+          entity: true,
+          entityId: true,
+          ipAddress: true,
+          userAgent: true,
+          createdAt: true,
           user: {
             select: {
               id: true,

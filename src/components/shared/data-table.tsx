@@ -10,7 +10,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 
 import { EmptyState } from "@/components/shared/empty-state";
 import { SearchInput } from "@/components/shared/search-input";
@@ -45,7 +45,7 @@ type DataTableProps<TData, TValue> = {
   isLoading?: boolean;
 };
 
-export function DataTable<TData, TValue>({
+function DataTableComponent<TData, TValue>({
   columns,
   data,
   searchKey,
@@ -114,11 +114,14 @@ export function DataTable<TData, TValue>({
   const total = serverPagination?.total ?? tableData.length;
   const start = total === 0 ? 0 : pageIndex * pageSize + 1;
   const end = Math.min((pageIndex + 1) * pageSize, total);
+  const rowModel = table.getRowModel();
+  const hasRows = rowModel.rows.length > 0;
 
   return (
-    <div className="space-y-3">
+    <div className="dashboard-layout">
       {isServerMode && onSearchChange ? (
         <SearchInput
+          className="max-w-xl"
           onChange={(value) => {
             if (value === searchValue) {
               return;
@@ -133,14 +136,15 @@ export function DataTable<TData, TValue>({
 
       {!isServerMode && searchKey ? (
         <SearchInput
+          className="max-w-xl"
           onChange={setSearch}
           placeholder={searchPlaceholder}
           value={search}
         />
       ) : null}
 
-      <div className="overflow-hidden rounded-lg border bg-white">
-        <Table>
+      <div className="surface-card overflow-hidden">
+        <Table className="min-w-full">
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
@@ -160,13 +164,13 @@ export function DataTable<TData, TValue>({
                   <TableRow key={`skeleton-${index}`}>
                     {columns.map((column, columnIndex) => (
                       <TableCell key={`${String(column.id ?? columnIndex)}-${index}`}>
-                        <Skeleton className="h-5 w-full" />
+                        <Skeleton className="h-4 w-full rounded-md" />
                       </TableCell>
                     ))}
                   </TableRow>
                 ))
-              : table.getRowModel().rows.length > 0
-                ? table.getRowModel().rows.map((row) => (
+              : hasRows
+                ? rowModel.rows.map((row) => (
                     <TableRow key={row.id}>
                       {row.getVisibleCells().map((cell) => (
                         <TableCell key={cell.id}>
@@ -177,7 +181,7 @@ export function DataTable<TData, TValue>({
                   ))
                 : (
                   <TableRow>
-                    <TableCell className="p-6" colSpan={columns.length}>
+                    <TableCell className="px-4 py-8" colSpan={columns.length}>
                       <EmptyState
                         description="Coba ubah kata kunci pencarian atau filter data."
                         title="Belum ada data"
@@ -189,8 +193,8 @@ export function DataTable<TData, TValue>({
         </Table>
       </div>
 
-      <div className="flex flex-col gap-3 rounded-lg border bg-white px-3 py-2 md:flex-row md:items-center md:justify-between">
-        <p className="text-sm text-slate-600">
+      <div className="surface-card flex flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between">
+        <p className="text-sm leading-6 text-slate-600">
           {isServerMode ? (
             <>
               Menampilkan <span className="font-medium">{start}</span>-<span className="font-medium">{end}</span>{" "}
@@ -218,7 +222,7 @@ export function DataTable<TData, TValue>({
             }}
             value={String(pageSize)}
           >
-            <SelectTrigger className="w-[100px]">
+            <SelectTrigger className="h-9 w-[110px] rounded-lg border-slate-300/80">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -241,6 +245,7 @@ export function DataTable<TData, TValue>({
 
               table.previousPage();
             }}
+            className="h-9 w-9 rounded-lg border-slate-300/80"
             size="icon"
             variant="outline"
           >
@@ -257,6 +262,7 @@ export function DataTable<TData, TValue>({
 
               table.nextPage();
             }}
+            className="h-9 w-9 rounded-lg border-slate-300/80"
             size="icon"
             variant="outline"
           >
@@ -267,3 +273,24 @@ export function DataTable<TData, TValue>({
     </div>
   );
 }
+
+function areDataTablePropsEqual<TData, TValue>(
+  prev: DataTableProps<TData, TValue>,
+  next: DataTableProps<TData, TValue>,
+) {
+  return (
+    prev.columns === next.columns
+    && prev.data === next.data
+    && prev.searchKey === next.searchKey
+    && prev.searchValue === next.searchValue
+    && prev.serverPagination === next.serverPagination
+    && prev.onSearchChange === next.onSearchChange
+    && prev.onServerPageChange === next.onServerPageChange
+    && prev.onServerPageSizeChange === next.onServerPageSizeChange
+    && prev.pageSizeOptions === next.pageSizeOptions
+    && prev.searchPlaceholder === next.searchPlaceholder
+    && prev.isLoading === next.isLoading
+  );
+}
+
+export const DataTable = memo(DataTableComponent, areDataTablePropsEqual) as typeof DataTableComponent;

@@ -47,9 +47,9 @@ export function SearchInput({
 
   return (
     <div className={cn("relative", className)}>
-      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
       <Input
-        className="pl-9 pr-9"
+        className="h-10 rounded-lg border-slate-300/80 bg-white pl-10 pr-10 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
         onChange={(event) => setLocalValue(event.target.value)}
         placeholder={placeholder}
         value={localValue}
@@ -57,7 +57,7 @@ export function SearchInput({
 
       {localValue ? (
         <Button
-          className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2"
+          className="absolute right-1.5 top-1/2 h-7 w-7 -translate-y-1/2 rounded-md"
           onClick={() => setLocalValue("")}
           size="icon"
           type="button"

@@ -8,6 +8,7 @@ import { toast } from "sonner";
 
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { DataTable } from "@/components/shared/data-table";
+import { FilterActions, FilterPanel, FilterToggleButton } from "@/components/shared/filter-panel";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { Badge } from "@/components/ui/badge";
@@ -60,6 +61,9 @@ export function KeluargaTable({ canCreate, canUpdate, canDelete }: KeluargaTable
   const [deleteTarget, setDeleteTarget] = useState<KeluargaListItem | null>(null);
   const [draftFilter, setDraftFilter] = useState<KeluargaFilter>(EMPTY_FILTER);
   const [appliedFilter, setAppliedFilter] = useState<KeluargaFilter>(EMPTY_FILTER);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [hasLoadedWilayahOptions, setHasLoadedWilayahOptions] = useState(false);
+  const [isWilayahOptionsLoading, setIsWilayahOptionsLoading] = useState(false);
   const [wilayahOptions, setWilayahOptions] = useState<WilayahOptionsResponse["data"]>({
     dusun: [],
     rw: [],
@@ -112,6 +116,12 @@ export function KeluargaTable({ canCreate, canUpdate, canDelete }: KeluargaTable
   }, [loadKeluarga]);
 
   const loadWilayahOptions = useCallback(async () => {
+    if (hasLoadedWilayahOptions || isWilayahOptionsLoading) {
+      return;
+    }
+
+    setIsWilayahOptionsLoading(true);
+
     try {
       const response = await fetch("/api/v1/wilayah/options", {
         cache: "no-store",
@@ -128,6 +138,7 @@ export function KeluargaTable({ canCreate, canUpdate, canDelete }: KeluargaTable
       }
 
       setWilayahOptions(payload.data);
+      setHasLoadedWilayahOptions(true);
     } catch (error) {
       console.error("[KeluargaTable.loadWilayahOptions]", error);
       toast.error(error instanceof Error ? error.message : "Gagal memuat opsi wilayah");
@@ -136,12 +147,22 @@ export function KeluargaTable({ canCreate, canUpdate, canDelete }: KeluargaTable
         rw: [],
         rt: [],
       });
+    } finally {
+      setIsWilayahOptionsLoading(false);
     }
-  }, []);
+  }, [hasLoadedWilayahOptions, isWilayahOptionsLoading]);
 
-  useEffect(() => {
-    void loadWilayahOptions();
-  }, [loadWilayahOptions]);
+  const handleToggleFilter = useCallback(() => {
+    setIsFilterOpen((previous) => {
+      const next = !previous;
+
+      if (next && !hasLoadedWilayahOptions && !isWilayahOptionsLoading) {
+        void loadWilayahOptions();
+      }
+
+      return next;
+    });
+  }, [hasLoadedWilayahOptions, isWilayahOptionsLoading, loadWilayahOptions]);
 
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) {
@@ -210,6 +231,17 @@ export function KeluargaTable({ canCreate, canUpdate, canDelete }: KeluargaTable
       .sort((a, b) => a.nomor.localeCompare(b.nomor));
   }, [draftFilter.rwId, wilayahOptions.rt]);
 
+  const activeFilterCount = useMemo(() => {
+    const candidates = [
+      appliedFilter.q.trim(),
+      appliedFilter.dusunId !== "all" ? appliedFilter.dusunId : "",
+      appliedFilter.rwId !== "all" ? appliedFilter.rwId : "",
+      appliedFilter.rtId !== "all" ? appliedFilter.rtId : "",
+    ];
+
+    return candidates.filter((value) => value.length > 0).length;
+  }, [appliedFilter]);
+
   const columns = useMemo<ColumnDef<KeluargaListItem>[]>(
     () => [
       {
@@ -267,14 +299,14 @@ export function KeluargaTable({ canCreate, canUpdate, canDelete }: KeluargaTable
         cell: ({ row }) => (
           <div className="flex justify-end gap-1">
             <Button asChild size="icon" type="button" variant="outline">
-              <Link href={`/keluarga/${row.original.id}`}>
+              <Link href={`/keluarga/${row.original.id}`} prefetch={false}>
                 <Eye className="h-4 w-4" />
               </Link>
             </Button>
 
             {canUpdate ? (
               <Button asChild size="icon" type="button" variant="outline">
-                <Link href={`/keluarga/${row.original.id}/edit`}>
+                <Link href={`/keluarga/${row.original.id}/edit`} prefetch={false}>
                   <Pencil className="h-4 w-4" />
                 </Link>
               </Button>
@@ -298,12 +330,32 @@ export function KeluargaTable({ canCreate, canUpdate, canDelete }: KeluargaTable
     [canDelete, canUpdate, pagination.page, pagination.pageSize],
   );
 
+  const handleServerPageChange = useCallback((page: number) => {
+    setPagination((previous) => ({
+      ...previous,
+      page,
+    }));
+  }, []);
+
+  const handleServerPageSizeChange = useCallback((pageSize: number) => {
+    setPagination((previous) => ({
+      ...previous,
+      page: 1,
+      pageSize,
+    }));
+  }, []);
+
   return (
-    <div className="space-y-6">
+    <div className="dashboard-layout">
       <PageHeader
         description="Kelola data Kartu Keluarga (KK), alamat, dan anggota keluarga."
         title="Data Keluarga"
       >
+        <FilterToggleButton
+          activeCount={activeFilterCount}
+          isOpen={isFilterOpen}
+          onToggle={handleToggleFilter}
+        />
         {canCreate ? (
           <Button asChild>
             <Link href="/keluarga/tambah">
@@ -314,16 +366,20 @@ export function KeluargaTable({ canCreate, canUpdate, canDelete }: KeluargaTable
         ) : null}
       </PageHeader>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="kpi-grid">
         <StatCard description="Total kartu keluarga terdaftar" icon={Home} title="Total KK" value={stats.totalKeluarga} />
         <StatCard description="Jumlah anggota di halaman aktif" icon={Users} title="Anggota (Halaman)" value={stats.totalAnggota} />
         <StatCard description="Rata-rata anggota di halaman aktif" icon={UserRound} title="Rata-rata (Halaman)" value={stats.rataRataAnggota} />
         <StatCard description="KK tanpa kepala keluarga di halaman aktif" icon={UserRound} title="Tanpa Kepala (Halaman)" value={stats.tanpaKepala} />
       </div>
 
-      <div className="rounded-lg border bg-white p-4">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <div className="space-y-2">
+      <FilterPanel
+        isOpen={isFilterOpen}
+        contentClassName="space-y-4"
+        title="Filter Keluarga"
+      >
+        <div className="form-grid md:grid-cols-2 xl:grid-cols-4">
+          <div className="field-stack">
             <Label>Kata Kunci</Label>
             <Input
               onChange={(event) => setDraftFilter((prev) => ({ ...prev, q: event.target.value }))}
@@ -332,7 +388,7 @@ export function KeluargaTable({ canCreate, canUpdate, canDelete }: KeluargaTable
             />
           </div>
 
-          <div className="space-y-2">
+          <div className="field-stack">
             <Label>Dusun</Label>
             <Select
               onValueChange={(value) =>
@@ -359,7 +415,7 @@ export function KeluargaTable({ canCreate, canUpdate, canDelete }: KeluargaTable
             </Select>
           </div>
 
-          <div className="space-y-2">
+          <div className="field-stack">
             <Label>RW</Label>
             <Select
               onValueChange={(value) =>
@@ -385,7 +441,7 @@ export function KeluargaTable({ canCreate, canUpdate, canDelete }: KeluargaTable
             </Select>
           </div>
 
-          <div className="space-y-2">
+          <div className="field-stack">
             <Label>RT</Label>
             <Select
               onValueChange={(value) => setDraftFilter((prev) => ({ ...prev, rtId: value }))}
@@ -406,54 +462,35 @@ export function KeluargaTable({ canCreate, canUpdate, canDelete }: KeluargaTable
           </div>
         </div>
 
-        <div className="mt-3 flex gap-2">
-          <Button
-            onClick={() => {
-              setAppliedFilter({ ...draftFilter });
-              setPagination((previous) => ({
-                ...previous,
-                page: 1,
-              }));
-            }}
-            type="button"
-          >
-            Terapkan Filter
-          </Button>
-          <Button
-            onClick={() => {
-              setDraftFilter({ ...EMPTY_FILTER });
-              setAppliedFilter({ ...EMPTY_FILTER });
-              setPagination((previous) => ({
-                ...previous,
-                page: 1,
-              }));
-            }}
-            type="button"
-            variant="outline"
-          >
-            Reset
-          </Button>
-        </div>
-      </div>
+        <FilterActions
+          applyLabel="Terapkan"
+          onApply={() => {
+            setAppliedFilter({ ...draftFilter });
+            setIsFilterOpen(false);
+            setPagination((previous) => ({
+              ...previous,
+              page: 1,
+            }));
+          }}
+          onReset={() => {
+            setDraftFilter({ ...EMPTY_FILTER });
+            setAppliedFilter({ ...EMPTY_FILTER });
+            setIsFilterOpen(false);
+            setPagination((previous) => ({
+              ...previous,
+              page: 1,
+            }));
+          }}
+        />
+      </FilterPanel>
 
       <DataTable
         columns={columns}
         data={rows}
         isLoading={isLoading}
+        onServerPageChange={handleServerPageChange}
+        onServerPageSizeChange={handleServerPageSizeChange}
         serverPagination={pagination}
-        onServerPageChange={(page) => {
-          setPagination((previous) => ({
-            ...previous,
-            page,
-          }));
-        }}
-        onServerPageSizeChange={(pageSize) => {
-          setPagination((previous) => ({
-            ...previous,
-            page: 1,
-            pageSize,
-          }));
-        }}
       />
 
       <ConfirmDialog

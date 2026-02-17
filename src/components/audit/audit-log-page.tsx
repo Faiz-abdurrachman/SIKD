@@ -6,10 +6,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { DataTable } from "@/components/shared/data-table";
+import { FilterActions, FilterPanel, FilterToggleButton } from "@/components/shared/filter-panel";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -38,6 +38,7 @@ export function AuditLogPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [draftFilter, setDraftFilter] = useState<AuditFilter>(EMPTY_FILTER);
   const [appliedFilter, setAppliedFilter] = useState<AuditFilter>(EMPTY_FILTER);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [pagination, setPagination] = useState({
     page: 1,
     pageSize: 20,
@@ -112,6 +113,18 @@ export function AuditLogPage() {
     return Array.from(new Set(rows.map((item) => item.action))).sort((a, b) => a.localeCompare(b));
   }, [rows]);
 
+  const activeFilterCount = useMemo(() => {
+    const candidates = [
+      appliedFilter.q.trim(),
+      appliedFilter.entity !== "all" ? appliedFilter.entity : "",
+      appliedFilter.action !== "all" ? appliedFilter.action : "",
+      appliedFilter.fromDate.trim(),
+      appliedFilter.toDate.trim(),
+    ];
+
+    return candidates.filter((value) => value.length > 0).length;
+  }, [appliedFilter]);
+
   const columns = useMemo<ColumnDef<AuditListItem>[]>(
     () => [
       {
@@ -153,20 +166,49 @@ export function AuditLogPage() {
     [],
   );
 
-  return (
-    <div className="space-y-6">
-      <PageHeader description="Jejak aktivitas sistem untuk pemantauan dan audit keamanan." title="Audit Log" />
+  const handleServerPageChange = useCallback((page: number) => {
+    setPagination((previous) => ({
+      ...previous,
+      page,
+    }));
+  }, []);
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+  const handleServerPageSizeChange = useCallback((pageSize: number) => {
+    setPagination((previous) => ({
+      ...previous,
+      page: 1,
+      pageSize,
+    }));
+  }, []);
+
+  const handleToggleFilter = useCallback(() => {
+    setIsFilterOpen((previous) => !previous);
+  }, []);
+
+  return (
+    <div className="dashboard-layout">
+      <PageHeader description="Jejak aktivitas sistem untuk pemantauan dan audit keamanan." title="Audit Log">
+        <FilterToggleButton
+          activeCount={activeFilterCount}
+          isOpen={isFilterOpen}
+          onToggle={handleToggleFilter}
+        />
+      </PageHeader>
+
+      <div className="kpi-grid">
         <StatCard description="Total aktivitas" icon={Activity} title="Total Log" value={stats.total} />
-        <StatCard description="User terlibat" icon={User} title="User Aktif" value={stats.uniqueUser} />
-        <StatCard description="Jenis entity tercatat" icon={Filter} title="Entity" value={stats.uniqueEntity} />
-        <StatCard description="Aktivitas hari ini" icon={Activity} title="Hari Ini" value={stats.today} />
+        <StatCard description="User terlibat di halaman aktif" icon={User} title="User Aktif (Halaman)" value={stats.uniqueUser} />
+        <StatCard description="Jenis entity di halaman aktif" icon={Filter} title="Entity (Halaman)" value={stats.uniqueEntity} />
+        <StatCard description="Aktivitas hari ini di halaman aktif" icon={Activity} title="Hari Ini (Halaman)" value={stats.today} />
       </div>
 
-      <div className="rounded-lg border bg-white p-4">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          <div className="space-y-2">
+      <FilterPanel
+        isOpen={isFilterOpen}
+        contentClassName="space-y-4"
+        title="Filter Audit Log"
+      >
+        <div className="form-grid md:grid-cols-2 xl:grid-cols-5">
+          <div className="field-stack">
             <Label>Kata Kunci</Label>
             <Input
               onChange={(event) => setDraftFilter((prev) => ({ ...prev, q: event.target.value }))}
@@ -175,7 +217,7 @@ export function AuditLogPage() {
             />
           </div>
 
-          <div className="space-y-2">
+          <div className="field-stack">
             <Label>Entity</Label>
             <Select onValueChange={(value) => setDraftFilter((prev) => ({ ...prev, entity: value }))} value={draftFilter.entity}>
               <SelectTrigger>
@@ -192,7 +234,7 @@ export function AuditLogPage() {
             </Select>
           </div>
 
-          <div className="space-y-2">
+          <div className="field-stack">
             <Label>Aksi</Label>
             <Select onValueChange={(value) => setDraftFilter((prev) => ({ ...prev, action: value }))} value={draftFilter.action}>
               <SelectTrigger>
@@ -209,7 +251,7 @@ export function AuditLogPage() {
             </Select>
           </div>
 
-          <div className="space-y-2">
+          <div className="field-stack">
             <Label>Dari Tanggal</Label>
             <Input
               onChange={(event) => setDraftFilter((prev) => ({ ...prev, fromDate: event.target.value }))}
@@ -218,7 +260,7 @@ export function AuditLogPage() {
             />
           </div>
 
-          <div className="space-y-2">
+          <div className="field-stack">
             <Label>Sampai Tanggal</Label>
             <Input
               onChange={(event) => setDraftFilter((prev) => ({ ...prev, toDate: event.target.value }))}
@@ -228,54 +270,35 @@ export function AuditLogPage() {
           </div>
         </div>
 
-        <div className="mt-3 flex gap-2">
-          <Button
-            onClick={() => {
-              setAppliedFilter({ ...draftFilter });
-              setPagination((previous) => ({
-                ...previous,
-                page: 1,
-              }));
-            }}
-            type="button"
-          >
-            Terapkan Filter
-          </Button>
-          <Button
-            onClick={() => {
-              setDraftFilter({ ...EMPTY_FILTER });
-              setAppliedFilter({ ...EMPTY_FILTER });
-              setPagination((previous) => ({
-                ...previous,
-                page: 1,
-              }));
-            }}
-            type="button"
-            variant="outline"
-          >
-            Reset
-          </Button>
-        </div>
-      </div>
+        <FilterActions
+          applyLabel="Terapkan"
+          onApply={() => {
+            setAppliedFilter({ ...draftFilter });
+            setIsFilterOpen(false);
+            setPagination((previous) => ({
+              ...previous,
+              page: 1,
+            }));
+          }}
+          onReset={() => {
+            setDraftFilter({ ...EMPTY_FILTER });
+            setAppliedFilter({ ...EMPTY_FILTER });
+            setIsFilterOpen(false);
+            setPagination((previous) => ({
+              ...previous,
+              page: 1,
+            }));
+          }}
+        />
+      </FilterPanel>
 
       <DataTable
         columns={columns}
         data={rows}
         isLoading={isLoading}
+        onServerPageChange={handleServerPageChange}
+        onServerPageSizeChange={handleServerPageSizeChange}
         serverPagination={pagination}
-        onServerPageChange={(page) => {
-          setPagination((previous) => ({
-            ...previous,
-            page,
-          }));
-        }}
-        onServerPageSizeChange={(pageSize) => {
-          setPagination((previous) => ({
-            ...previous,
-            page: 1,
-            pageSize,
-          }));
-        }}
       />
     </div>
   );

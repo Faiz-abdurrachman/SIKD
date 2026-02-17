@@ -5,7 +5,9 @@ import { CalendarDays, Plus, RefreshCw, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { AsyncCombobox, type AsyncComboboxOption } from "@/components/shared/async-combobox";
 import { DataTable } from "@/components/shared/data-table";
+import { FilterActions, FilterPanel, FilterToggleButton } from "@/components/shared/filter-panel";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -23,7 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatEnumLabel, formatTanggalIndonesia } from "@/lib/format";
-import { fetchAllPages, fetchPaginatedPage } from "@/lib/paginated-client-fetch";
+import { fetchPaginatedPage } from "@/lib/paginated-client-fetch";
 import type { MutasiListItem } from "@/types/mutasi.types";
 
 type ErrorResponse = {
@@ -44,6 +46,16 @@ type PendudukOption = {
   nik: string;
   nama: string;
   statusKependudukan: "TETAP" | "SEMENTARA" | "PINDAH" | "MENINGGAL";
+};
+
+type KeluargaSearchResponse = {
+  success: true;
+  data: KeluargaOption[];
+};
+
+type PendudukSearchResponse = {
+  success: true;
+  data: PendudukOption[];
 };
 
 type MutasiFormState = {
@@ -121,15 +133,15 @@ export function MutasiPage({ canCreate }: { canCreate: boolean }) {
   const [isLoading, setIsLoading] = useState(true);
   const [draftFilter, setDraftFilter] = useState<MutasiFilter>(EMPTY_FILTER);
   const [appliedFilter, setAppliedFilter] = useState<MutasiFilter>(EMPTY_FILTER);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [pagination, setPagination] = useState({
     page: 1,
     pageSize: 20,
     total: 0,
     totalPages: 1,
   });
-
-  const [keluargaOptions, setKeluargaOptions] = useState<KeluargaOption[]>([]);
-  const [pendudukOptions, setPendudukOptions] = useState<PendudukOption[]>([]);
+  const [keluargaOptionMap, setKeluargaOptionMap] = useState<Record<string, AsyncComboboxOption>>({});
+  const [pendudukOptionMap, setPendudukOptionMap] = useState<Record<string, AsyncComboboxOption>>({});
 
   const [openCreate, setOpenCreate] = useState(false);
   const [form, setForm] = useState<MutasiFormState>(EMPTY_FORM);
@@ -168,45 +180,69 @@ export function MutasiPage({ canCreate }: { canCreate: boolean }) {
     }
   }, [appliedFilter, pagination.page, pagination.pageSize]);
 
-  const loadOptions = useCallback(async () => {
-    try {
-      const [keluargaData, pendudukData] = await Promise.all([
-        fetchAllPages<KeluargaOption>({
-          endpoint: "/api/v1/keluarga",
-          sortBy: "noKK",
-          sortOrder: "asc",
-          errorMessage: "Gagal memuat data KK",
-        }),
-        fetchAllPages<PendudukOption>({
-          endpoint: "/api/v1/penduduk",
-          sortBy: "nama",
-          sortOrder: "asc",
-          errorMessage: "Gagal memuat data penduduk",
-        }),
-      ]);
-      setKeluargaOptions(keluargaData);
-      setPendudukOptions(pendudukData);
-    } catch (error) {
-      console.error("[MutasiPage.loadOptions]", error);
-      toast.error(error instanceof Error ? error.message : "Gagal memuat opsi data mutasi");
-    }
-  }, []);
-
   useEffect(() => {
     void loadMutasi();
   }, [loadMutasi]);
 
-  useEffect(() => {
-    if (!canCreate || !openCreate) {
-      return;
+  const searchKeluargaOptions = useCallback(async (query: string) => {
+    const response = await fetch(`/api/v1/keluarga/search?q=${encodeURIComponent(query)}&limit=20`, {
+      cache: "no-store",
+    });
+    const payload = (await response.json()) as KeluargaSearchResponse | ErrorResponse;
+
+    if (!response.ok || !payload.success) {
+      throw new Error(payload.success ? "Gagal mencari data KK" : (payload.error?.message ?? "Gagal mencari data KK"));
     }
 
-    if (keluargaOptions.length && pendudukOptions.length) {
-      return;
+    const options = payload.data.map<AsyncComboboxOption>((item) => ({
+      value: item.id,
+      label: `${item.noKK} - ${item.kepalaKeluarga?.nama ?? "-"}`,
+      description: `Nomor KK: ${item.noKK}`,
+    }));
+
+    setKeluargaOptionMap((previous) => {
+      const next = { ...previous };
+
+      for (const option of options) {
+        next[option.value] = option;
+      }
+
+      return next;
+    });
+
+    return options;
+  }, []);
+
+  const searchPendudukOptions = useCallback(async (query: string) => {
+    const response = await fetch(`/api/v1/penduduk/search?q=${encodeURIComponent(query)}`, {
+      cache: "no-store",
+    });
+    const payload = (await response.json()) as PendudukSearchResponse | ErrorResponse;
+
+    if (!response.ok || !payload.success) {
+      throw new Error(payload.success ? "Gagal mencari penduduk" : (payload.error?.message ?? "Gagal mencari penduduk"));
     }
 
-    void loadOptions();
-  }, [canCreate, keluargaOptions.length, loadOptions, openCreate, pendudukOptions.length]);
+    const options = payload.data
+      .filter((item) => item.statusKependudukan === "TETAP" || item.statusKependudukan === "SEMENTARA")
+      .map<AsyncComboboxOption>((item) => ({
+        value: item.id,
+        label: `${item.nik} - ${item.nama}`,
+        description: `Status: ${formatEnumLabel(item.statusKependudukan)}`,
+      }));
+
+    setPendudukOptionMap((previous) => {
+      const next = { ...previous };
+
+      for (const option of options) {
+        next[option.value] = option;
+      }
+
+      return next;
+    });
+
+    return options;
+  }, []);
 
   const stats = useMemo(
     () => ({
@@ -217,6 +253,15 @@ export function MutasiPage({ canCreate }: { canCreate: boolean }) {
     }),
     [pagination.total, rows],
   );
+
+  const activeFilterCount = useMemo(() => {
+    const candidates = [
+      appliedFilter.q.trim(),
+      appliedFilter.jenisMutasi !== "all" ? appliedFilter.jenisMutasi : "",
+    ];
+
+    return candidates.filter((value) => value.length > 0).length;
+  }, [appliedFilter]);
 
   const columns = useMemo<ColumnDef<MutasiListItem>[]>(
     () => [
@@ -345,7 +390,7 @@ export function MutasiPage({ canCreate }: { canCreate: boolean }) {
       toast.success("Data mutasi berhasil ditambahkan");
       setOpenCreate(false);
       setForm(EMPTY_FORM);
-      await Promise.all([loadMutasi(), loadOptions()]);
+      await loadMutasi();
     } catch (error) {
       console.error("[MutasiPage.handleCreate]", error);
       toast.error(error instanceof Error ? error.message : "Gagal menambah mutasi");
@@ -354,9 +399,33 @@ export function MutasiPage({ canCreate }: { canCreate: boolean }) {
     }
   };
 
+  const handleServerPageChange = useCallback((page: number) => {
+    setPagination((previous) => ({
+      ...previous,
+      page,
+    }));
+  }, []);
+
+  const handleServerPageSizeChange = useCallback((pageSize: number) => {
+    setPagination((previous) => ({
+      ...previous,
+      page: 1,
+      pageSize,
+    }));
+  }, []);
+
+  const handleToggleFilter = useCallback(() => {
+    setIsFilterOpen((previous) => !previous);
+  }, []);
+
   return (
-    <div className="space-y-6">
+    <div className="dashboard-layout">
       <PageHeader description="Catat dan pantau seluruh perubahan data kependudukan." title="Data Mutasi">
+        <FilterToggleButton
+          activeCount={activeFilterCount}
+          isOpen={isFilterOpen}
+          onToggle={handleToggleFilter}
+        />
         {canCreate ? (
           <Button
             onClick={() => {
@@ -371,16 +440,20 @@ export function MutasiPage({ canCreate }: { canCreate: boolean }) {
         ) : null}
       </PageHeader>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="kpi-grid">
         <StatCard description="Total mutasi tercatat" icon={RefreshCw} title="Total Mutasi" value={stats.total} />
         <StatCard description="Mutasi kelahiran di halaman aktif" icon={Users} title="Kelahiran (Halaman)" value={stats.lahir} />
         <StatCard description="Mutasi kematian di halaman aktif" icon={CalendarDays} title="Kematian (Halaman)" value={stats.mati} />
         <StatCard description="Mutasi pindah di halaman aktif" icon={RefreshCw} title="Pindah (Halaman)" value={stats.pindah} />
       </div>
 
-      <div className="rounded-lg border bg-white p-4">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <div className="space-y-2 xl:col-span-3">
+      <FilterPanel
+        isOpen={isFilterOpen}
+        contentClassName="space-y-4"
+        title="Filter Mutasi"
+      >
+        <div className="form-grid md:grid-cols-2 xl:grid-cols-4">
+          <div className="field-stack xl:col-span-3">
             <Label>Kata Kunci</Label>
             <Input
               onChange={(event) => setDraftFilter((prev) => ({ ...prev, q: event.target.value }))}
@@ -389,7 +462,7 @@ export function MutasiPage({ canCreate }: { canCreate: boolean }) {
             />
           </div>
 
-          <div className="space-y-2">
+          <div className="field-stack">
             <Label>Jenis Mutasi</Label>
             <Select
               onValueChange={(value) => setDraftFilter((prev) => ({ ...prev, jenisMutasi: value as MutasiFilter["jenisMutasi"] }))}
@@ -409,54 +482,35 @@ export function MutasiPage({ canCreate }: { canCreate: boolean }) {
           </div>
         </div>
 
-        <div className="mt-3 flex gap-2">
-          <Button
-            onClick={() => {
-              setAppliedFilter({ ...draftFilter });
-              setPagination((previous) => ({
-                ...previous,
-                page: 1,
-              }));
-            }}
-            type="button"
-          >
-            Terapkan Filter
-          </Button>
-          <Button
-            onClick={() => {
-              setDraftFilter({ ...EMPTY_FILTER });
-              setAppliedFilter({ ...EMPTY_FILTER });
-              setPagination((previous) => ({
-                ...previous,
-                page: 1,
-              }));
-            }}
-            type="button"
-            variant="outline"
-          >
-            Reset
-          </Button>
-        </div>
-      </div>
+        <FilterActions
+          applyLabel="Terapkan"
+          onApply={() => {
+            setAppliedFilter({ ...draftFilter });
+            setIsFilterOpen(false);
+            setPagination((previous) => ({
+              ...previous,
+              page: 1,
+            }));
+          }}
+          onReset={() => {
+            setDraftFilter({ ...EMPTY_FILTER });
+            setAppliedFilter({ ...EMPTY_FILTER });
+            setIsFilterOpen(false);
+            setPagination((previous) => ({
+              ...previous,
+              page: 1,
+            }));
+          }}
+        />
+      </FilterPanel>
 
       <DataTable
         columns={columns}
         data={rows}
         isLoading={isLoading}
+        onServerPageChange={handleServerPageChange}
+        onServerPageSizeChange={handleServerPageSizeChange}
         serverPagination={pagination}
-        onServerPageChange={(page) => {
-          setPagination((previous) => ({
-            ...previous,
-            page,
-          }));
-        }}
-        onServerPageSizeChange={(pageSize) => {
-          setPagination((previous) => ({
-            ...previous,
-            page: 1,
-            pageSize,
-          }));
-        }}
       />
 
       <Dialog onOpenChange={setOpenCreate} open={openCreate}>
@@ -502,23 +556,19 @@ export function MutasiPage({ canCreate }: { canCreate: boolean }) {
             {(form.jenisMutasi === "MATI" || form.jenisMutasi === "PINDAH_KELUAR") ? (
               <div className="space-y-2">
                 <Label>Penduduk</Label>
-                <Select
-                  onValueChange={(value) => setForm((prev) => ({ ...prev, pendudukId: value }))}
+                <AsyncCombobox
+                  emptyText="Penduduk tidak ditemukan."
+                  fetchOptions={searchPendudukOptions}
+                  onFetchError={(error) => {
+                    console.error("[MutasiPage.searchPendudukOptions]", error);
+                    toast.error(error instanceof Error ? error.message : "Gagal mencari penduduk");
+                  }}
+                  onValueChange={(value) => setForm((previous) => ({ ...previous, pendudukId: value }))}
+                  placeholder="Cari penduduk (NIK / nama)"
+                  searchPlaceholder="Ketik NIK atau nama penduduk..."
+                  selectedLabel={form.pendudukId ? pendudukOptionMap[form.pendudukId]?.label : undefined}
                   value={form.pendudukId}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Pilih penduduk" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {pendudukOptions
-                      .filter((item) => item.statusKependudukan === "TETAP" || item.statusKependudukan === "SEMENTARA")
-                      .map((item) => (
-                        <SelectItem key={item.id} value={item.id}>
-                          {item.nik} - {item.nama}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
+                />
               </div>
             ) : null}
 
@@ -564,21 +614,19 @@ export function MutasiPage({ canCreate }: { canCreate: boolean }) {
                   </div>
                   <div className="space-y-2">
                     <Label>KK Tujuan</Label>
-                    <Select
-                      onValueChange={(value) => setForm((prev) => ({ ...prev, keluargaId: value }))}
+                    <AsyncCombobox
+                      emptyText="Data KK tidak ditemukan."
+                      fetchOptions={searchKeluargaOptions}
+                      onFetchError={(error) => {
+                        console.error("[MutasiPage.searchKeluargaOptions]", error);
+                        toast.error(error instanceof Error ? error.message : "Gagal mencari data KK");
+                      }}
+                      onValueChange={(value) => setForm((previous) => ({ ...previous, keluargaId: value }))}
+                      placeholder="Cari nomor KK atau nama kepala keluarga"
+                      searchPlaceholder="Ketik nomor KK atau nama kepala keluarga..."
+                      selectedLabel={form.keluargaId ? keluargaOptionMap[form.keluargaId]?.label : undefined}
                       value={form.keluargaId}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Pilih KK" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {keluargaOptions.map((item) => (
-                          <SelectItem key={item.id} value={item.id}>
-                            {item.noKK} - {item.kepalaKeluarga?.nama ?? "-"}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    />
                   </div>
                 </div>
               </>

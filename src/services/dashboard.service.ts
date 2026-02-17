@@ -40,15 +40,13 @@ function getAge(dateOfBirth: Date) {
   return Math.max(age, 0);
 }
 
-function countByLabel(items: string[]) {
-  const map = new Map<string, number>();
+function incrementCounter(counter: Map<string, number>, key: string) {
+  const label = key.trim();
+  counter.set(label, (counter.get(label) ?? 0) + 1);
+}
 
-  for (const item of items) {
-    const label = item.trim();
-    map.set(label, (map.get(label) ?? 0) + 1);
-  }
-
-  return Array.from(map.entries())
+function mapToSortedArray(counter: Map<string, number>) {
+  return Array.from(counter.entries())
     .map(([label, value]) => ({ label, value }))
     .sort((a, b) => b.value - a.value);
 }
@@ -114,8 +112,15 @@ export const dashboardService = {
     });
 
     const umurBuckets = initUmurBuckets();
+    const agamaCounter = new Map<string, number>();
+    const pendidikanCounter = new Map<string, number>();
+    const genderCounter = new Map<string, number>();
 
     for (const item of penduduk) {
+      incrementCounter(agamaCounter, formatEnumLabel(item.agama));
+      incrementCounter(pendidikanCounter, formatEnumLabel(item.pendidikanTerakhir));
+      incrementCounter(genderCounter, formatEnumLabel(item.jenisKelamin));
+
       const age = getAge(item.tanggalLahir);
       const groupIndex = findAgeGroupIndex(age);
 
@@ -133,9 +138,9 @@ export const dashboardService = {
     }
 
     return {
-      agama: countByLabel(penduduk.map((item) => formatEnumLabel(item.agama))),
-      pendidikan: countByLabel(penduduk.map((item) => formatEnumLabel(item.pendidikanTerakhir))),
-      gender: countByLabel(penduduk.map((item) => formatEnumLabel(item.jenisKelamin))),
+      agama: mapToSortedArray(agamaCounter),
+      pendidikan: mapToSortedArray(pendidikanCounter),
+      gender: mapToSortedArray(genderCounter),
       umur: umurBuckets,
     };
   },
@@ -172,6 +177,22 @@ export const dashboardService = {
       },
       take: limit,
     });
+  },
+
+  async getOverview(limit = 5) {
+    const [stats, demografi, recentMutasi, recentSurat] = await Promise.all([
+      this.getStats(),
+      this.getDemografi(),
+      this.getRecentMutasi(limit),
+      this.getRecentSurat(limit),
+    ]);
+
+    return {
+      stats,
+      demografi,
+      recentMutasi,
+      recentSurat,
+    };
   },
 };
 

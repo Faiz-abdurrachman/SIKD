@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, FileSpreadsheet, Filter } from "lucide-react";
+import { FileText, FileSpreadsheet } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Bar,
@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
+import { FilterActions, FilterPanel, FilterToggleButton } from "@/components/shared/filter-panel";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -139,8 +140,10 @@ function getReportRows(summary: LaporanSummary, tab: ReportTab) {
 
 export function LaporanPage() {
   const [activeTab, setActiveTab] = useState<ReportTab>("penduduk");
-  const [period, setPeriod] = useState(defaultPeriod());
-  const [appliedPeriod, setAppliedPeriod] = useState(defaultPeriod());
+  const [defaultRange] = useState(() => defaultPeriod());
+  const [period, setPeriod] = useState(() => ({ ...defaultRange }));
+  const [appliedPeriod, setAppliedPeriod] = useState(() => ({ ...defaultRange }));
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [summary, setSummary] = useState<LaporanSummary | null>(null);
 
@@ -183,12 +186,37 @@ export function LaporanPage() {
       appliedPeriod.fromDate === period.fromDate && appliedPeriod.toDate === period.toDate;
 
     if (isSamePeriod) {
+      setIsFilterOpen(false);
       void loadSummary();
       return;
     }
 
     setAppliedPeriod({ ...period });
+    setIsFilterOpen(false);
   }, [appliedPeriod.fromDate, appliedPeriod.toDate, loadSummary, period]);
+
+  const handleResetPeriod = useCallback(() => {
+    const nextPeriod = { ...defaultRange };
+    const isSamePeriod =
+      appliedPeriod.fromDate === nextPeriod.fromDate && appliedPeriod.toDate === nextPeriod.toDate;
+
+    setPeriod(nextPeriod);
+    setAppliedPeriod(nextPeriod);
+    setIsFilterOpen(false);
+
+    if (isSamePeriod) {
+      void loadSummary();
+    }
+  }, [appliedPeriod.fromDate, appliedPeriod.toDate, defaultRange, loadSummary]);
+
+  const activeFilterCount = useMemo(() => {
+    const candidates = [
+      appliedPeriod.fromDate !== defaultRange.fromDate ? appliedPeriod.fromDate : "",
+      appliedPeriod.toDate !== defaultRange.toDate ? appliedPeriod.toDate : "",
+    ];
+
+    return candidates.filter((value) => value.length > 0).length;
+  }, [appliedPeriod.fromDate, appliedPeriod.toDate, defaultRange.fromDate, defaultRange.toDate]);
 
   const periodeLabel = useMemo(() => {
     if (!summary) {
@@ -239,8 +267,13 @@ export function LaporanPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="dashboard-layout">
       <PageHeader description="Rekap dan analisis data kependudukan, mutasi, dan surat." title="Laporan & Statistik">
+        <FilterToggleButton
+          activeCount={activeFilterCount}
+          isOpen={isFilterOpen}
+          onToggle={() => setIsFilterOpen((previous) => !previous)}
+        />
         <Button onClick={exportPdf} type="button" variant="outline">
           <FileText className="mr-2 h-4 w-4" />
           Export PDF
@@ -251,34 +284,32 @@ export function LaporanPage() {
         </Button>
       </PageHeader>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Filter Periode</CardTitle>
-          <CardDescription>{periodeLabel}</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3 md:flex-row md:items-end">
-          <div className="space-y-2">
-            <Label>Dari</Label>
-            <Input
-              onChange={(event) => setPeriod((prev) => ({ ...prev, fromDate: event.target.value }))}
-              type="date"
-              value={period.fromDate}
-            />
+      <FilterPanel contentClassName="space-y-4" isOpen={isFilterOpen} title="Filter Laporan">
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">Periode aktif: {periodeLabel}</p>
+
+          <div className="form-grid md:grid-cols-2 xl:grid-cols-4">
+            <div className="field-stack">
+              <Label>Dari</Label>
+              <Input
+                onChange={(event) => setPeriod((prev) => ({ ...prev, fromDate: event.target.value }))}
+                type="date"
+                value={period.fromDate}
+              />
+            </div>
+            <div className="field-stack">
+              <Label>Sampai</Label>
+              <Input
+                onChange={(event) => setPeriod((prev) => ({ ...prev, toDate: event.target.value }))}
+                type="date"
+                value={period.toDate}
+              />
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label>Sampai</Label>
-            <Input
-              onChange={(event) => setPeriod((prev) => ({ ...prev, toDate: event.target.value }))}
-              type="date"
-              value={period.toDate}
-            />
-          </div>
-          <Button onClick={handleApplyPeriod} type="button">
-            <Filter className="mr-2 h-4 w-4" />
-            Terapkan
-          </Button>
-        </CardContent>
-      </Card>
+
+          <FilterActions onApply={handleApplyPeriod} onReset={handleResetPeriod} />
+        </div>
+      </FilterPanel>
 
       {isLoading ? <p className="text-sm text-slate-600">Memuat data laporan...</p> : null}
 

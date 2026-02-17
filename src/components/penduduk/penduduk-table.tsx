@@ -8,6 +8,7 @@ import { toast } from "sonner";
 
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { DataTable } from "@/components/shared/data-table";
+import { FilterActions, FilterPanel, FilterToggleButton } from "@/components/shared/filter-panel";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -77,6 +78,9 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
   const [deleteTarget, setDeleteTarget] = useState<PendudukListItem | null>(null);
   const [draftFilter, setDraftFilter] = useState<PendudukFilter>(EMPTY_FILTER);
   const [appliedFilter, setAppliedFilter] = useState<PendudukFilter>(EMPTY_FILTER);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [hasLoadedWilayahOptions, setHasLoadedWilayahOptions] = useState(false);
+  const [isWilayahOptionsLoading, setIsWilayahOptionsLoading] = useState(false);
   const [wilayahOptions, setWilayahOptions] = useState<WilayahOptionsResponse["data"]>({
     dusun: [],
     rw: [],
@@ -138,6 +142,12 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
   }, [loadPenduduk]);
 
   const loadWilayahOptions = useCallback(async () => {
+    if (hasLoadedWilayahOptions || isWilayahOptionsLoading) {
+      return;
+    }
+
+    setIsWilayahOptionsLoading(true);
+
     try {
       const response = await fetch("/api/v1/wilayah/options", {
         cache: "no-store",
@@ -154,6 +164,7 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
       }
 
       setWilayahOptions(payload.data);
+      setHasLoadedWilayahOptions(true);
     } catch (error) {
       console.error("[PendudukTable.loadWilayahOptions]", error);
       toast.error(error instanceof Error ? error.message : "Gagal memuat opsi wilayah");
@@ -162,12 +173,22 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
         rw: [],
         rt: [],
       });
+    } finally {
+      setIsWilayahOptionsLoading(false);
     }
-  }, []);
+  }, [hasLoadedWilayahOptions, isWilayahOptionsLoading]);
 
-  useEffect(() => {
-    void loadWilayahOptions();
-  }, [loadWilayahOptions]);
+  const handleToggleFilter = useCallback(() => {
+    setIsFilterOpen((previous) => {
+      const next = !previous;
+
+      if (next && !hasLoadedWilayahOptions && !isWilayahOptionsLoading) {
+        void loadWilayahOptions();
+      }
+
+      return next;
+    });
+  }, [hasLoadedWilayahOptions, isWilayahOptionsLoading, loadWilayahOptions]);
 
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) {
@@ -232,6 +253,24 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
       .sort((a, b) => a.nomor.localeCompare(b.nomor));
   }, [draftFilter.rwId, wilayahOptions.rt]);
 
+  const activeFilterCount = useMemo(() => {
+    const candidates = [
+      appliedFilter.q.trim(),
+      appliedFilter.nik.trim(),
+      appliedFilter.pekerjaan.trim(),
+      appliedFilter.jenisKelamin !== "all" ? appliedFilter.jenisKelamin : "",
+      appliedFilter.agama !== "all" ? appliedFilter.agama : "",
+      appliedFilter.statusPerkawinan !== "all" ? appliedFilter.statusPerkawinan : "",
+      appliedFilter.statusKependudukan !== "all" ? appliedFilter.statusKependudukan : "",
+      appliedFilter.pendidikanTerakhir !== "all" ? appliedFilter.pendidikanTerakhir : "",
+      appliedFilter.dusunId !== "all" ? appliedFilter.dusunId : "",
+      appliedFilter.rwId !== "all" ? appliedFilter.rwId : "",
+      appliedFilter.rtId !== "all" ? appliedFilter.rtId : "",
+    ];
+
+    return candidates.filter((value) => value.length > 0).length;
+  }, [appliedFilter]);
+
   const columns = useMemo<ColumnDef<PendudukListItem>[]>(
     () => [
       {
@@ -295,14 +334,14 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
         cell: ({ row }) => (
           <div className="flex justify-end gap-1">
             <Button asChild size="icon" type="button" variant="outline">
-              <Link href={`/penduduk/${row.original.id}`}>
+              <Link href={`/penduduk/${row.original.id}`} prefetch={false}>
                 <Eye className="h-4 w-4" />
               </Link>
             </Button>
 
             {canUpdate ? (
               <Button asChild size="icon" type="button" variant="outline">
-                <Link href={`/penduduk/${row.original.id}/edit`}>
+                <Link href={`/penduduk/${row.original.id}/edit`} prefetch={false}>
                   <Pencil className="h-4 w-4" />
                 </Link>
               </Button>
@@ -326,12 +365,32 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
     [canDelete, canUpdate, pagination.page, pagination.pageSize],
   );
 
+  const handleServerPageChange = useCallback((page: number) => {
+    setPagination((previous) => ({
+      ...previous,
+      page,
+    }));
+  }, []);
+
+  const handleServerPageSizeChange = useCallback((pageSize: number) => {
+    setPagination((previous) => ({
+      ...previous,
+      page: 1,
+      pageSize,
+    }));
+  }, []);
+
   return (
-    <div className="space-y-6">
+    <div className="dashboard-layout">
       <PageHeader
         description="Kelola data penduduk desa secara terstruktur dan terdokumentasi."
         title="Data Penduduk"
       >
+        <FilterToggleButton
+          activeCount={activeFilterCount}
+          isOpen={isFilterOpen}
+          onToggle={handleToggleFilter}
+        />
         {canCreate ? (
           <Button asChild>
             <Link href="/penduduk/tambah">
@@ -342,16 +401,20 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
         ) : null}
       </PageHeader>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="kpi-grid">
         <StatCard description="Seluruh data penduduk tercatat" icon={Users} title="Total Penduduk" value={stats.total} />
         <StatCard description="Jumlah laki-laki di halaman aktif" icon={UserCheck} title="Laki-laki (Halaman)" value={stats.lakiLakiPage} />
         <StatCard description="Jumlah perempuan di halaman aktif" icon={VenusAndMars} title="Perempuan (Halaman)" value={stats.perempuanPage} />
         <StatCard description="Status bukan tetap di halaman aktif" icon={UserMinus} title="Non Aktif (Halaman)" value={stats.nonAktifPage} />
       </div>
 
-      <div className="rounded-lg border bg-white p-4">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <div className="space-y-2">
+      <FilterPanel
+        isOpen={isFilterOpen}
+        contentClassName="space-y-4"
+        title="Filter Penduduk"
+      >
+        <div className="form-grid md:grid-cols-2 xl:grid-cols-4">
+          <div className="field-stack">
             <Label>Kata Kunci</Label>
             <Input
               onChange={(event) => setDraftFilter((prev) => ({ ...prev, q: event.target.value }))}
@@ -360,7 +423,7 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
             />
           </div>
 
-          <div className="space-y-2">
+          <div className="field-stack">
             <Label>NIK (Spesifik)</Label>
             <Input
               onChange={(event) => setDraftFilter((prev) => ({ ...prev, nik: event.target.value }))}
@@ -369,7 +432,7 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
             />
           </div>
 
-          <div className="space-y-2">
+          <div className="field-stack">
             <Label>Jenis Kelamin</Label>
             <Select
               onValueChange={(value) => setDraftFilter((prev) => ({ ...prev, jenisKelamin: value as PendudukFilter["jenisKelamin"] }))}
@@ -389,7 +452,7 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
             </Select>
           </div>
 
-          <div className="space-y-2">
+          <div className="field-stack">
             <Label>Agama</Label>
             <Select
               onValueChange={(value) => setDraftFilter((prev) => ({ ...prev, agama: value as PendudukFilter["agama"] }))}
@@ -409,7 +472,7 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
             </Select>
           </div>
 
-          <div className="space-y-2">
+          <div className="field-stack">
             <Label>Status Perkawinan</Label>
             <Select
               onValueChange={(value) =>
@@ -431,7 +494,7 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
             </Select>
           </div>
 
-          <div className="space-y-2">
+          <div className="field-stack">
             <Label>Status Kependudukan</Label>
             <Select
               onValueChange={(value) =>
@@ -455,7 +518,7 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
             </Select>
           </div>
 
-          <div className="space-y-2">
+          <div className="field-stack">
             <Label>Pendidikan Terakhir</Label>
             <Select
               onValueChange={(value) =>
@@ -477,7 +540,7 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
             </Select>
           </div>
 
-          <div className="space-y-2">
+          <div className="field-stack">
             <Label>Pekerjaan</Label>
             <Input
               onChange={(event) => setDraftFilter((prev) => ({ ...prev, pekerjaan: event.target.value }))}
@@ -486,7 +549,7 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
             />
           </div>
 
-          <div className="space-y-2">
+          <div className="field-stack">
             <Label>Dusun</Label>
             <Select
               onValueChange={(value) =>
@@ -513,7 +576,7 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
             </Select>
           </div>
 
-          <div className="space-y-2">
+          <div className="field-stack">
             <Label>RW</Label>
             <Select
               onValueChange={(value) =>
@@ -539,7 +602,7 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
             </Select>
           </div>
 
-          <div className="space-y-2">
+          <div className="field-stack">
             <Label>RT</Label>
             <Select
               onValueChange={(value) => setDraftFilter((prev) => ({ ...prev, rtId: value }))}
@@ -560,54 +623,35 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
           </div>
         </div>
 
-        <div className="mt-3 flex gap-2">
-          <Button
-            onClick={() => {
-              setAppliedFilter({ ...draftFilter });
-              setPagination((previous) => ({
-                ...previous,
-                page: 1,
-              }));
-            }}
-            type="button"
-          >
-            Terapkan Filter
-          </Button>
-          <Button
-            onClick={() => {
-              setDraftFilter({ ...EMPTY_FILTER });
-              setAppliedFilter({ ...EMPTY_FILTER });
-              setPagination((previous) => ({
-                ...previous,
-                page: 1,
-              }));
-            }}
-            type="button"
-            variant="outline"
-          >
-            Reset
-          </Button>
-        </div>
-      </div>
+        <FilterActions
+          applyLabel="Terapkan"
+          onApply={() => {
+            setAppliedFilter({ ...draftFilter });
+            setIsFilterOpen(false);
+            setPagination((previous) => ({
+              ...previous,
+              page: 1,
+            }));
+          }}
+          onReset={() => {
+            setDraftFilter({ ...EMPTY_FILTER });
+            setAppliedFilter({ ...EMPTY_FILTER });
+            setIsFilterOpen(false);
+            setPagination((previous) => ({
+              ...previous,
+              page: 1,
+            }));
+          }}
+        />
+      </FilterPanel>
 
       <DataTable
         columns={columns}
         data={rows}
         isLoading={isLoading}
+        onServerPageChange={handleServerPageChange}
+        onServerPageSizeChange={handleServerPageSizeChange}
         serverPagination={pagination}
-        onServerPageChange={(page) => {
-          setPagination((previous) => ({
-            ...previous,
-            page,
-          }));
-        }}
-        onServerPageSizeChange={(pageSize) => {
-          setPagination((previous) => ({
-            ...previous,
-            page: 1,
-            pageSize,
-          }));
-        }}
       />
 
       <ConfirmDialog

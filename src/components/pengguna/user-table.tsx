@@ -15,6 +15,7 @@ import { toast } from "sonner";
 
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { DataTable } from "@/components/shared/data-table";
+import { FilterActions, FilterPanel, FilterToggleButton } from "@/components/shared/filter-panel";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { Badge } from "@/components/ui/badge";
@@ -77,6 +78,7 @@ export function UserTable() {
   const [isLoading, setIsLoading] = useState(true);
   const [draftFilter, setDraftFilter] = useState<UserFilter>(EMPTY_FILTER);
   const [appliedFilter, setAppliedFilter] = useState<UserFilter>(EMPTY_FILTER);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [pagination, setPagination] = useState({
     page: 1,
     pageSize: 20,
@@ -144,6 +146,16 @@ export function UserTable() {
     }),
     [pagination.total, rows],
   );
+
+  const activeFilterCount = useMemo(() => {
+    const candidates = [
+      appliedFilter.q.trim(),
+      appliedFilter.role !== "all" ? appliedFilter.role : "",
+      appliedFilter.isActive !== "all" ? appliedFilter.isActive : "",
+    ];
+
+    return candidates.filter((value) => value.length > 0).length;
+  }, [appliedFilter]);
 
   const columns = useMemo<ColumnDef<UserListItem>[]>(
     () => [
@@ -382,9 +394,33 @@ export function UserTable() {
     }
   };
 
+  const handleServerPageChange = useCallback((page: number) => {
+    setPagination((previous) => ({
+      ...previous,
+      page,
+    }));
+  }, []);
+
+  const handleServerPageSizeChange = useCallback((pageSize: number) => {
+    setPagination((previous) => ({
+      ...previous,
+      page: 1,
+      pageSize,
+    }));
+  }, []);
+
+  const handleToggleFilter = useCallback(() => {
+    setIsFilterOpen((previous) => !previous);
+  }, []);
+
   return (
-    <div className="space-y-6">
+    <div className="dashboard-layout">
       <PageHeader description="Kelola akun pengguna dan hak akses sistem SIDESA." title="Manajemen Pengguna">
+        <FilterToggleButton
+          activeCount={activeFilterCount}
+          isOpen={isFilterOpen}
+          onToggle={handleToggleFilter}
+        />
         <Button
           onClick={() => {
             setCreateForm(EMPTY_FORM);
@@ -397,16 +433,20 @@ export function UserTable() {
         </Button>
       </PageHeader>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="kpi-grid">
         <StatCard description="Total akun terdaftar" icon={Users} title="Total User" value={stats.total} />
         <StatCard description="Akun aktif di halaman aktif" icon={UserCheck} title="Aktif (Halaman)" value={stats.active} />
         <StatCard description="Akun nonaktif di halaman aktif" icon={UserX} title="Nonaktif (Halaman)" value={stats.inactive} />
         <StatCard description="Super admin di halaman aktif" icon={ShieldCheck} title="Super Admin (Halaman)" value={stats.superAdmin} />
       </div>
 
-      <div className="rounded-lg border bg-white p-4">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <div className="space-y-2 xl:col-span-2">
+      <FilterPanel
+        isOpen={isFilterOpen}
+        contentClassName="space-y-4"
+        title="Filter Pengguna"
+      >
+        <div className="form-grid md:grid-cols-2 xl:grid-cols-4">
+          <div className="field-stack xl:col-span-2">
             <Label>Kata Kunci</Label>
             <Input
               onChange={(event) => setDraftFilter((prev) => ({ ...prev, q: event.target.value }))}
@@ -415,7 +455,7 @@ export function UserTable() {
             />
           </div>
 
-          <div className="space-y-2">
+          <div className="field-stack">
             <Label>Role</Label>
             <Select
               onValueChange={(value) => setDraftFilter((prev) => ({ ...prev, role: value as UserFilter["role"] }))}
@@ -435,7 +475,7 @@ export function UserTable() {
             </Select>
           </div>
 
-          <div className="space-y-2">
+          <div className="field-stack">
             <Label>Status</Label>
             <Select
               onValueChange={(value) => setDraftFilter((prev) => ({ ...prev, isActive: value as UserFilter["isActive"] }))}
@@ -453,54 +493,35 @@ export function UserTable() {
           </div>
         </div>
 
-        <div className="mt-3 flex gap-2">
-          <Button
-            onClick={() => {
-              setAppliedFilter({ ...draftFilter });
-              setPagination((previous) => ({
-                ...previous,
-                page: 1,
-              }));
-            }}
-            type="button"
-          >
-            Terapkan Filter
-          </Button>
-          <Button
-            onClick={() => {
-              setDraftFilter({ ...EMPTY_FILTER });
-              setAppliedFilter({ ...EMPTY_FILTER });
-              setPagination((previous) => ({
-                ...previous,
-                page: 1,
-              }));
-            }}
-            type="button"
-            variant="outline"
-          >
-            Reset
-          </Button>
-        </div>
-      </div>
+        <FilterActions
+          applyLabel="Terapkan"
+          onApply={() => {
+            setAppliedFilter({ ...draftFilter });
+            setIsFilterOpen(false);
+            setPagination((previous) => ({
+              ...previous,
+              page: 1,
+            }));
+          }}
+          onReset={() => {
+            setDraftFilter({ ...EMPTY_FILTER });
+            setAppliedFilter({ ...EMPTY_FILTER });
+            setIsFilterOpen(false);
+            setPagination((previous) => ({
+              ...previous,
+              page: 1,
+            }));
+          }}
+        />
+      </FilterPanel>
 
       <DataTable
         columns={columns}
         data={rows}
         isLoading={isLoading}
+        onServerPageChange={handleServerPageChange}
+        onServerPageSizeChange={handleServerPageSizeChange}
         serverPagination={pagination}
-        onServerPageChange={(page) => {
-          setPagination((previous) => ({
-            ...previous,
-            page,
-          }));
-        }}
-        onServerPageSizeChange={(pageSize) => {
-          setPagination((previous) => ({
-            ...previous,
-            page: 1,
-            pageSize,
-          }));
-        }}
       />
 
       <Dialog onOpenChange={setOpenCreate} open={openCreate}>

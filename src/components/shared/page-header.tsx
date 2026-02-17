@@ -9,13 +9,13 @@ type PageHeaderProps = {
 
 export function PageHeader({ title, description, children, className }: PageHeaderProps) {
   return (
-    <div className={cn("flex flex-col gap-3 md:flex-row md:items-center md:justify-between", className)}>
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">{title}</h1>
-        {description ? <p className="mt-1 text-sm text-slate-600">{description}</p> : null}
+    <div className={cn("flex flex-col gap-3 md:flex-row md:items-start md:justify-between md:gap-4", className)}>
+      <div className="min-w-0 space-y-1">
+        <h1 className="text-xl font-semibold tracking-tight text-slate-900 md:text-2xl">{title}</h1>
+        {description ? <p className="max-w-3xl text-sm leading-6 text-slate-600">{description}</p> : null}
       </div>
 
-      {children ? <div className="flex items-center gap-2">{children}</div> : null}
+      {children ? <div className="actions-row md:justify-end">{children}</div> : null}
     </div>
   );
 }

@@ -21,28 +21,19 @@ function toDateRange(input: LaporanSummaryInput) {
   };
 }
 
-function aggregate(items: string[]) {
-  const map = new Map<string, number>();
+function incrementCounter(counter: Map<string, number>, key: string) {
+  const normalizedKey = key.trim() || "Tidak Diisi";
+  counter.set(normalizedKey, (counter.get(normalizedKey) ?? 0) + 1);
+}
 
-  for (const item of items) {
-    const key = item.trim() || "Tidak Diisi";
-    map.set(key, (map.get(key) ?? 0) + 1);
-  }
-
-  return Array.from(map.entries())
+function counterToSortedArray(counter: Map<string, number>) {
+  return Array.from(counter.entries())
     .map(([label, value]) => ({ label, value }))
     .sort((a, b) => b.value - a.value);
 }
 
-function aggregateByMonth(dates: Date[]) {
-  const map = new Map<string, number>();
-
-  for (const date of dates) {
-    const key = format(date, "MMMM yyyy", { locale: localeId });
-    map.set(key, (map.get(key) ?? 0) + 1);
-  }
-
-  return Array.from(map.entries())
+function counterToSortedArrayAsc(counter: Map<string, number>) {
+  return Array.from(counter.entries())
     .map(([label, value]) => ({ label, value }))
     .sort((a, b) => a.label.localeCompare(b.label));
 }
@@ -51,7 +42,7 @@ export const laporanService = {
   async getSummary(input: LaporanSummaryInput) {
     const { fromDate, toDate } = toDateRange(input);
 
-    const [penduduk, mutasi, surat] = await prisma.$transaction([
+    const [penduduk, keluargaDusun, mutasi, surat] = await prisma.$transaction([
       prisma.penduduk.findMany({
         select: {
           agama: true,
@@ -59,17 +50,19 @@ export const laporanService = {
           jenisKelamin: true,
           pekerjaan: true,
           tanggalLahir: true,
-          keluarga: {
+          keluargaId: true,
+        },
+      }),
+      prisma.keluarga.findMany({
+        select: {
+          id: true,
+          rt: {
             select: {
-              rt: {
+              rw: {
                 select: {
-                  rw: {
+                  dusun: {
                     select: {
-                      dusun: {
-                        select: {
-                          nama: true,
-                        },
-                      },
+                      nama: true,
                     },
                   },
                 },
@@ -105,12 +98,25 @@ export const laporanService = {
       }),
     ]);
 
-    const byPekerjaan = aggregate(penduduk.map((item) => item.pekerjaan)).slice(0, 10);
-    const byDusun = aggregate(penduduk.map((item) => item.keluarga.rt.rw.dusun.nama));
-
     const umurBuckets = dashboardHelpers.initUmurBuckets();
+    const keluargaToDusun = new Map<string, string>();
+    const genderCounter = new Map<string, number>();
+    const agamaCounter = new Map<string, number>();
+    const pendidikanCounter = new Map<string, number>();
+    const pekerjaanCounter = new Map<string, number>();
+    const dusunCounter = new Map<string, number>();
+
+    for (const item of keluargaDusun) {
+      keluargaToDusun.set(item.id, item.rt.rw.dusun.nama);
+    }
 
     for (const item of penduduk) {
+      incrementCounter(genderCounter, formatEnumLabel(item.jenisKelamin));
+      incrementCounter(agamaCounter, formatEnumLabel(item.agama));
+      incrementCounter(pendidikanCounter, formatEnumLabel(item.pendidikanTerakhir));
+      incrementCounter(pekerjaanCounter, item.pekerjaan);
+      incrementCounter(dusunCounter, keluargaToDusun.get(item.keluargaId) ?? "Tidak Diisi");
+
       const age = dashboardHelpers.getAge(item.tanggalLahir);
       const index = dashboardHelpers.findAgeGroupIndex(age);
 
@@ -127,6 +133,22 @@ export const laporanService = {
       }
     }
 
+    const mutasiJenisCounter = new Map<string, number>();
+    const mutasiBulanCounter = new Map<string, number>();
+
+    for (const item of mutasi) {
+      incrementCounter(mutasiJenisCounter, formatEnumLabel(item.jenisMutasi));
+      incrementCounter(mutasiBulanCounter, format(item.tanggalMutasi, "MMMM yyyy", { locale: localeId }));
+    }
+
+    const suratJenisCounter = new Map<string, number>();
+    const suratStatusCounter = new Map<string, number>();
+
+    for (const item of surat) {
+      incrementCounter(suratJenisCounter, formatEnumLabel(item.jenisSurat));
+      incrementCounter(suratStatusCounter, formatEnumLabel(item.status));
+    }
+
     return {
       periode: {
         fromDate: fromDate.toISOString(),
@@ -134,21 +156,21 @@ export const laporanService = {
       },
       penduduk: {
         total: penduduk.length,
-        byGender: aggregate(penduduk.map((item) => formatEnumLabel(item.jenisKelamin))),
-        byAgama: aggregate(penduduk.map((item) => formatEnumLabel(item.agama))),
-        byPendidikan: aggregate(penduduk.map((item) => formatEnumLabel(item.pendidikanTerakhir))),
-        byPekerjaan,
-        byDusun,
+        byGender: counterToSortedArray(genderCounter),
+        byAgama: counterToSortedArray(agamaCounter),
+        byPendidikan: counterToSortedArray(pendidikanCounter),
+        byPekerjaan: counterToSortedArray(pekerjaanCounter).slice(0, 10),
+        byDusun: counterToSortedArray(dusunCounter),
       },
       mutasi: {
         total: mutasi.length,
-        byJenis: aggregate(mutasi.map((item) => formatEnumLabel(item.jenisMutasi))),
-        byBulan: aggregateByMonth(mutasi.map((item) => item.tanggalMutasi)),
+        byJenis: counterToSortedArray(mutasiJenisCounter),
+        byBulan: counterToSortedArrayAsc(mutasiBulanCounter),
       },
       surat: {
         total: surat.length,
-        byJenis: aggregate(surat.map((item) => formatEnumLabel(item.jenisSurat))),
-        byStatus: aggregate(surat.map((item) => formatEnumLabel(item.status))),
+        byJenis: counterToSortedArray(suratJenisCounter),
+        byStatus: counterToSortedArray(suratStatusCounter),
       },
       piramida: umurBuckets.map((item) => ({
         label: item.label,

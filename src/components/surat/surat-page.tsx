@@ -16,8 +16,10 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { AsyncCombobox, type AsyncComboboxOption } from "@/components/shared/async-combobox";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { DataTable } from "@/components/shared/data-table";
+import { FilterActions, FilterPanel, FilterToggleButton } from "@/components/shared/filter-panel";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -43,7 +45,7 @@ import {
   SURAT_JENIS_OPTIONS,
 } from "@/lib/surat-fields";
 import { formatEnumLabel, formatTanggalIndonesia } from "@/lib/format";
-import { fetchAllPages, fetchPaginatedPage } from "@/lib/paginated-client-fetch";
+import { fetchPaginatedPage } from "@/lib/paginated-client-fetch";
 import type { SuratDetailResponse, SuratJenis, SuratListItem } from "@/types/surat.types";
 
 type ErrorResponse = {
@@ -58,6 +60,11 @@ type PendudukOption = {
   nik: string;
   nama: string;
   statusKependudukan: "TETAP" | "SEMENTARA" | "PINDAH" | "MENINGGAL";
+};
+
+type PendudukSearchResponse = {
+  success: true;
+  data: PendudukOption[];
 };
 
 type SuratFormState = {
@@ -145,14 +152,14 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
   const [isLoading, setIsLoading] = useState(true);
   const [draftFilter, setDraftFilter] = useState<SuratFilter>(EMPTY_FILTER);
   const [appliedFilter, setAppliedFilter] = useState<SuratFilter>(EMPTY_FILTER);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [pagination, setPagination] = useState({
     page: 1,
     pageSize: 20,
     total: 0,
     totalPages: 1,
   });
-
-  const [pendudukOptions, setPendudukOptions] = useState<PendudukOption[]>([]);
+  const [pendudukOptionMap, setPendudukOptionMap] = useState<Record<string, AsyncComboboxOption>>({});
 
   const [openCreate, setOpenCreate] = useState(false);
   const [openEdit, setOpenEdit] = useState(false);
@@ -201,37 +208,40 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
     }
   }, [appliedFilter, pagination.page, pagination.pageSize]);
 
-  const loadPendudukOptions = useCallback(async () => {
-    try {
-      const data = await fetchAllPages<PendudukOption>({
-        endpoint: "/api/v1/penduduk",
-        sortBy: "nama",
-        sortOrder: "asc",
-        errorMessage: "Gagal memuat daftar penduduk",
-      });
-      setPendudukOptions(
-        data.filter(
-          (item) => item.statusKependudukan === "TETAP" || item.statusKependudukan === "SEMENTARA",
-        ),
-      );
-    } catch (error) {
-      console.error("[SuratPage.loadPendudukOptions]", error);
-      toast.error(error instanceof Error ? error.message : "Gagal memuat daftar penduduk");
-      setPendudukOptions([]);
-    }
-  }, []);
-
   useEffect(() => {
     void loadSurat();
   }, [loadSurat]);
 
-  useEffect(() => {
-    if ((!openCreate && !openEdit) || pendudukOptions.length) {
-      return;
+  const searchPendudukOptions = useCallback(async (query: string) => {
+    const response = await fetch(`/api/v1/penduduk/search?q=${encodeURIComponent(query)}`, {
+      cache: "no-store",
+    });
+    const payload = (await response.json()) as PendudukSearchResponse | ErrorResponse;
+
+    if (!response.ok || !payload.success) {
+      throw new Error(payload.success ? "Gagal mencari penduduk" : (payload.error?.message ?? "Gagal mencari penduduk"));
     }
 
-    void loadPendudukOptions();
-  }, [loadPendudukOptions, openCreate, openEdit, pendudukOptions.length]);
+    const options = payload.data
+      .filter((item) => item.statusKependudukan === "TETAP" || item.statusKependudukan === "SEMENTARA")
+      .map<AsyncComboboxOption>((item) => ({
+        value: item.id,
+        label: `${item.nik} - ${item.nama}`,
+        description: `Status: ${formatEnumLabel(item.statusKependudukan)}`,
+      }));
+
+    setPendudukOptionMap((previous) => {
+      const next = { ...previous };
+
+      for (const option of options) {
+        next[option.value] = option;
+      }
+
+      return next;
+    });
+
+    return options;
+  }, []);
 
   const stats = useMemo(
     () => ({
@@ -242,6 +252,18 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
     }),
     [pagination.total, rows],
   );
+
+  const activeFilterCount = useMemo(() => {
+    const candidates = [
+      appliedFilter.q.trim(),
+      appliedFilter.jenisSurat !== "all" ? appliedFilter.jenisSurat : "",
+      appliedFilter.status !== "all" ? appliedFilter.status : "",
+      appliedFilter.fromDate.trim(),
+      appliedFilter.toDate.trim(),
+    ];
+
+    return candidates.filter((value) => value.length > 0).length;
+  }, [appliedFilter]);
 
   const runPatchAction = useCallback(
     async (
@@ -345,6 +367,17 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
       }
 
       const pemohonId = payload.data.pendudukList[0]?.penduduk.id ?? "";
+      const pemohon = payload.data.pendudukList[0]?.penduduk;
+
+      if (pemohon) {
+        setPendudukOptionMap((previous) => ({
+          ...previous,
+          [pemohon.id]: {
+            value: pemohon.id,
+            label: `${pemohon.nik} - ${pemohon.nama}`,
+          },
+        }));
+      }
 
       setForm({
         jenisSurat: payload.data.jenisSurat,
@@ -691,9 +724,33 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
     });
   };
 
+  const handleServerPageChange = useCallback((page: number) => {
+    setPagination((previous) => ({
+      ...previous,
+      page,
+    }));
+  }, []);
+
+  const handleServerPageSizeChange = useCallback((pageSize: number) => {
+    setPagination((previous) => ({
+      ...previous,
+      page: 1,
+      pageSize,
+    }));
+  }, []);
+
+  const handleToggleFilter = useCallback(() => {
+    setIsFilterOpen((previous) => !previous);
+  }, []);
+
   return (
-    <div className="space-y-6">
+    <div className="dashboard-layout">
       <PageHeader description="Kelola surat desa, alur persetujuan, dan status cetak." title="Data Surat">
+        <FilterToggleButton
+          activeCount={activeFilterCount}
+          isOpen={isFilterOpen}
+          onToggle={handleToggleFilter}
+        />
         {canCreate ? (
           <Button
             onClick={() => {
@@ -708,16 +765,20 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
         ) : null}
       </PageHeader>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="kpi-grid">
         <StatCard description="Total surat tercatat" icon={FileText} title="Total Surat" value={stats.total} />
         <StatCard description="Menunggu persetujuan di halaman aktif" icon={Send} title="Menunggu (Halaman)" value={stats.menunggu} />
         <StatCard description="Surat disetujui di halaman aktif" icon={Check} title="Disetujui (Halaman)" value={stats.disetujui} />
         <StatCard description="Surat selesai di halaman aktif" icon={CheckCircle2} title="Selesai (Halaman)" value={stats.selesai} />
       </div>
 
-      <div className="rounded-lg border bg-white p-4">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          <div className="space-y-2 xl:col-span-2">
+      <FilterPanel
+        isOpen={isFilterOpen}
+        contentClassName="space-y-4"
+        title="Filter Surat"
+      >
+        <div className="form-grid md:grid-cols-2 xl:grid-cols-5">
+          <div className="field-stack xl:col-span-2">
             <Label>Kata Kunci</Label>
             <Input
               onChange={(event) => setDraftFilter((prev) => ({ ...prev, q: event.target.value }))}
@@ -726,7 +787,7 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
             />
           </div>
 
-          <div className="space-y-2">
+          <div className="field-stack">
             <Label>Jenis Surat</Label>
             <Select
               onValueChange={(value) => setDraftFilter((prev) => ({ ...prev, jenisSurat: value as SuratFilter["jenisSurat"] }))}
@@ -746,7 +807,7 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
             </Select>
           </div>
 
-          <div className="space-y-2">
+          <div className="field-stack">
             <Label>Status</Label>
             <Select
               onValueChange={(value) => setDraftFilter((prev) => ({ ...prev, status: value as SuratFilter["status"] }))}
@@ -767,7 +828,7 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
             </Select>
           </div>
 
-          <div className="space-y-2">
+          <div className="field-stack">
             <Label>Dari Tanggal</Label>
             <Input
               onChange={(event) => setDraftFilter((prev) => ({ ...prev, fromDate: event.target.value }))}
@@ -776,7 +837,7 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
             />
           </div>
 
-          <div className="space-y-2">
+          <div className="field-stack">
             <Label>Sampai Tanggal</Label>
             <Input
               onChange={(event) => setDraftFilter((prev) => ({ ...prev, toDate: event.target.value }))}
@@ -786,54 +847,35 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
           </div>
         </div>
 
-        <div className="mt-3 flex gap-2">
-          <Button
-            onClick={() => {
-              setAppliedFilter({ ...draftFilter });
-              setPagination((previous) => ({
-                ...previous,
-                page: 1,
-              }));
-            }}
-            type="button"
-          >
-            Terapkan Filter
-          </Button>
-          <Button
-            onClick={() => {
-              setDraftFilter({ ...EMPTY_FILTER });
-              setAppliedFilter({ ...EMPTY_FILTER });
-              setPagination((previous) => ({
-                ...previous,
-                page: 1,
-              }));
-            }}
-            type="button"
-            variant="outline"
-          >
-            Reset
-          </Button>
-        </div>
-      </div>
+        <FilterActions
+          applyLabel="Terapkan"
+          onApply={() => {
+            setAppliedFilter({ ...draftFilter });
+            setIsFilterOpen(false);
+            setPagination((previous) => ({
+              ...previous,
+              page: 1,
+            }));
+          }}
+          onReset={() => {
+            setDraftFilter({ ...EMPTY_FILTER });
+            setAppliedFilter({ ...EMPTY_FILTER });
+            setIsFilterOpen(false);
+            setPagination((previous) => ({
+              ...previous,
+              page: 1,
+            }));
+          }}
+        />
+      </FilterPanel>
 
       <DataTable
         columns={columns}
         data={rows}
         isLoading={isLoading}
+        onServerPageChange={handleServerPageChange}
+        onServerPageSizeChange={handleServerPageSizeChange}
         serverPagination={pagination}
-        onServerPageChange={(page) => {
-          setPagination((previous) => ({
-            ...previous,
-            page,
-          }));
-        }}
-        onServerPageSizeChange={(pageSize) => {
-          setPagination((previous) => ({
-            ...previous,
-            page: 1,
-            pageSize,
-          }));
-        }}
       />
 
       <Dialog onOpenChange={setOpenCreate} open={openCreate}>
@@ -867,18 +909,19 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
 
             <div className="space-y-2">
               <Label>Penduduk Pemohon</Label>
-              <Select onValueChange={(value) => setForm((prev) => ({ ...prev, pendudukId: value }))} value={form.pendudukId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Pilih penduduk" />
-                </SelectTrigger>
-                <SelectContent>
-                  {pendudukOptions.map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.nik} - {item.nama}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <AsyncCombobox
+                emptyText="Penduduk tidak ditemukan."
+                fetchOptions={searchPendudukOptions}
+                onFetchError={(error) => {
+                  console.error("[SuratPage.searchPendudukOptions]", error);
+                  toast.error(error instanceof Error ? error.message : "Gagal mencari penduduk");
+                }}
+                onValueChange={(value) => setForm((previous) => ({ ...previous, pendudukId: value }))}
+                placeholder="Cari penduduk (NIK / nama)"
+                searchPlaceholder="Ketik NIK atau nama penduduk..."
+                selectedLabel={form.pendudukId ? pendudukOptionMap[form.pendudukId]?.label : undefined}
+                value={form.pendudukId}
+              />
             </div>
 
             {renderDynamicFields()}
@@ -919,18 +962,19 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
 
             <div className="space-y-2">
               <Label>Penduduk Pemohon</Label>
-              <Select onValueChange={(value) => setForm((prev) => ({ ...prev, pendudukId: value }))} value={form.pendudukId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Pilih penduduk" />
-                </SelectTrigger>
-                <SelectContent>
-                  {pendudukOptions.map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.nik} - {item.nama}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <AsyncCombobox
+                emptyText="Penduduk tidak ditemukan."
+                fetchOptions={searchPendudukOptions}
+                onFetchError={(error) => {
+                  console.error("[SuratPage.searchPendudukOptions]", error);
+                  toast.error(error instanceof Error ? error.message : "Gagal mencari penduduk");
+                }}
+                onValueChange={(value) => setForm((previous) => ({ ...previous, pendudukId: value }))}
+                placeholder="Cari penduduk (NIK / nama)"
+                searchPlaceholder="Ketik NIK atau nama penduduk..."
+                selectedLabel={form.pendudukId ? pendudukOptionMap[form.pendudukId]?.label : undefined}
+                value={form.pendudukId}
+              />
             </div>
 
             {renderDynamicFields()}
