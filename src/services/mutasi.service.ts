@@ -42,6 +42,8 @@ type RequestMeta = {
   userAgent?: string;
 };
 
+type TxClient = Prisma.TransactionClient;
+
 type ServiceErrorCode =
   | (typeof ERROR_CODES)[keyof typeof ERROR_CODES]
   | "INVALID_INPUT"
@@ -120,8 +122,8 @@ function buildListWhere(params: SearchMutasiInput): Prisma.MutasiWhereInput {
   return where;
 }
 
-async function assertKeluargaExists(keluargaId: string) {
-  const keluarga = await prisma.keluarga.findUnique({
+async function assertKeluargaExists(tx: TxClient, keluargaId: string) {
+  const keluarga = await tx.keluarga.findUnique({
     where: { id: keluargaId },
     select: { id: true },
   });
@@ -133,8 +135,8 @@ async function assertKeluargaExists(keluargaId: string) {
   }
 }
 
-async function assertPendudukExists(pendudukId: string) {
-  const penduduk = await prisma.penduduk.findUnique({
+async function assertPendudukExists(tx: TxClient, pendudukId: string) {
+  const penduduk = await tx.penduduk.findUnique({
     where: { id: pendudukId },
     select: { id: true, statusKependudukan: true },
   });
@@ -148,8 +150,8 @@ async function assertPendudukExists(pendudukId: string) {
   return penduduk;
 }
 
-async function assertNIKAvailable(nik: string) {
-  const exists = await prisma.penduduk.findUnique({
+async function assertNIKAvailableInTx(tx: TxClient, nik: string) {
+  const exists = await tx.penduduk.findUnique({
     where: { nik },
     select: { id: true },
   });
@@ -157,6 +159,26 @@ async function assertNIKAvailable(nik: string) {
   if (exists) {
     throw createServiceError(ERROR_CODES.NIK_ALREADY_EXISTS, "NIK sudah terdaftar", 409, [
       { field: "nik", message: "NIK sudah digunakan" },
+    ]);
+  }
+}
+
+function assertPendudukAktifForMutasi(status: StatusKependudukan, jenisMutasi: JenisMutasi) {
+  if (status === StatusKependudukan.MENINGGAL) {
+    throw createServiceError("INVALID_INPUT", "Penduduk sudah berstatus meninggal", 400, [
+      { field: "pendudukId", message: "Pilih penduduk yang masih aktif" },
+    ]);
+  }
+
+  if (status === StatusKependudukan.PINDAH) {
+    throw createServiceError("INVALID_INPUT", "Penduduk sudah berstatus pindah", 400, [
+      { field: "pendudukId", message: "Pilih penduduk yang masih aktif" },
+    ]);
+  }
+
+  if (jenisMutasi === JenisMutasi.MATI && status !== StatusKependudukan.TETAP && status !== StatusKependudukan.SEMENTARA) {
+    throw createServiceError("INVALID_INPUT", "Status penduduk tidak valid untuk mutasi kematian", 400, [
+      { field: "pendudukId", message: "Penduduk harus aktif tetap/sementara" },
     ]);
   }
 }
@@ -205,8 +227,8 @@ export const mutasiService = {
   async create(data: CreateMutasiInput, actorUserId: string, meta?: RequestMeta) {
     const created = await prisma.$transaction(async (tx) => {
       if (data.jenisMutasi === "LAHIR") {
-        await assertKeluargaExists(data.keluargaId);
-        await assertNIKAvailable(data.nik);
+        await assertKeluargaExists(tx, data.keluargaId);
+        await assertNIKAvailableInTx(tx, data.nik);
 
         const penduduk = await tx.penduduk.create({
           data: {
@@ -247,7 +269,8 @@ export const mutasiService = {
       }
 
       if (data.jenisMutasi === "MATI") {
-        await assertPendudukExists(data.pendudukId);
+        const penduduk = await assertPendudukExists(tx, data.pendudukId);
+        assertPendudukAktifForMutasi(penduduk.statusKependudukan as StatusKependudukan, JenisMutasi.MATI);
 
         await tx.penduduk.update({
           where: { id: data.pendudukId },
@@ -270,7 +293,8 @@ export const mutasiService = {
       }
 
       if (data.jenisMutasi === "PINDAH_KELUAR") {
-        await assertPendudukExists(data.pendudukId);
+        const penduduk = await assertPendudukExists(tx, data.pendudukId);
+        assertPendudukAktifForMutasi(penduduk.statusKependudukan as StatusKependudukan, JenisMutasi.PINDAH_KELUAR);
 
         await tx.penduduk.update({
           where: { id: data.pendudukId },
@@ -292,8 +316,8 @@ export const mutasiService = {
         });
       }
 
-      await assertKeluargaExists(data.keluargaId);
-      await assertNIKAvailable(data.nik);
+      await assertKeluargaExists(tx, data.keluargaId);
+      await assertNIKAvailableInTx(tx, data.nik);
 
       const pendudukMasuk = await tx.penduduk.create({
         data: {

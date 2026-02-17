@@ -4,6 +4,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import {
   Check,
   CheckCircle2,
+  Download,
   FileText,
   Pencil,
   Plus,
@@ -34,8 +35,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  buildPerihalDefault,
+  createEmptyIsiSurat,
+  normalizeIsiSuratInput,
+  SURAT_DYNAMIC_FIELDS,
+  SURAT_JENIS_OPTIONS,
+} from "@/lib/surat-fields";
 import { formatEnumLabel, formatTanggalIndonesia } from "@/lib/format";
-import type { SuratDetailResponse, SuratListItem, SuratListResponse, SuratJenis } from "@/types/surat.types";
+import type { SuratDetailResponse, SuratJenis, SuratListItem, SuratListResponse } from "@/types/surat.types";
 
 type ErrorResponse = {
   success: false;
@@ -55,16 +63,8 @@ type SuratFormState = {
   jenisSurat: SuratJenis;
   perihal: string;
   pendudukId: string;
-  keperluan: string;
+  isiSurat: Record<string, string>;
   keterangan: string;
-};
-
-const EMPTY_FORM: SuratFormState = {
-  jenisSurat: "SK_DOMISILI",
-  perihal: "",
-  pendudukId: "",
-  keperluan: "",
-  keterangan: "",
 };
 
 const LIST_QUERY = "page=1&limit=500&sortBy=tanggalSurat&sortOrder=desc";
@@ -77,6 +77,54 @@ type SuratPageProps = {
   canPrint: boolean;
 };
 
+function createInitialForm(jenisSurat: SuratJenis = "SK_DOMISILI"): SuratFormState {
+  return {
+    jenisSurat,
+    perihal: buildPerihalDefault(jenisSurat),
+    pendudukId: "",
+    isiSurat: createEmptyIsiSurat(jenisSurat),
+    keterangan: "",
+  };
+}
+
+function buildIsiSuratPayload(jenisSurat: SuratJenis, isiSurat: Record<string, string>) {
+  const fields = SURAT_DYNAMIC_FIELDS[jenisSurat] ?? [];
+  const payload: Record<string, unknown> = {};
+
+  for (const field of fields) {
+    const rawValue = (isiSurat[field.key] ?? "").trim();
+
+    if (!rawValue) {
+      continue;
+    }
+
+    if (field.type === "number") {
+      const numberValue = Number(rawValue);
+      payload[field.key] = Number.isFinite(numberValue) ? numberValue : rawValue;
+      continue;
+    }
+
+    payload[field.key] = rawValue;
+  }
+
+  return payload;
+}
+
+async function parseErrorResponse(response: Response) {
+  try {
+    const contentType = response.headers.get("content-type") ?? "";
+
+    if (contentType.includes("application/json")) {
+      const payload = (await response.json()) as ErrorResponse;
+      return payload.error?.message ?? "Permintaan gagal diproses";
+    }
+
+    return `Permintaan gagal diproses (HTTP ${response.status})`;
+  } catch {
+    return `Permintaan gagal diproses (HTTP ${response.status})`;
+  }
+}
+
 export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrint }: SuratPageProps) {
   const [rows, setRows] = useState<SuratListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -87,7 +135,7 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
   const [openEdit, setOpenEdit] = useState(false);
   const [openReject, setOpenReject] = useState(false);
 
-  const [form, setForm] = useState<SuratFormState>(EMPTY_FORM);
+  const [form, setForm] = useState<SuratFormState>(createInitialForm());
   const [selectedSurat, setSelectedSurat] = useState<SuratListItem | null>(null);
   const [rejectReason, setRejectReason] = useState("");
 
@@ -165,7 +213,12 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
   );
 
   const runPatchAction = useCallback(
-    async (suratId: string, action: "submit" | "approve" | "reject" | "print" | "complete", payload?: Record<string, unknown>) => {
+    async (
+      suratId: string,
+      action: "submit" | "approve" | "reject" | "print" | "complete",
+      payload?: Record<string, unknown>,
+      options?: { refresh?: boolean; successMessage?: string },
+    ) => {
       setIsSubmitting(true);
 
       try {
@@ -177,18 +230,15 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
           ...(payload ? { body: JSON.stringify(payload) } : {}),
         });
 
-        const body = (await response.json()) as
-          | {
-              success: true;
-            }
-          | ErrorResponse;
-
-        if (!response.ok || !body.success) {
-          throw new Error(body.success ? "Aksi gagal diproses" : (body.error?.message ?? "Aksi gagal diproses"));
+        if (!response.ok) {
+          throw new Error(await parseErrorResponse(response));
         }
 
-        toast.success("Status surat berhasil diperbarui");
-        await loadSurat();
+        toast.success(options?.successMessage ?? "Status surat berhasil diperbarui");
+
+        if (options?.refresh !== false) {
+          await loadSurat();
+        }
       } catch (error) {
         console.error("[SuratPage.runPatchAction]", error);
         toast.error(error instanceof Error ? error.message : "Aksi gagal diproses");
@@ -198,6 +248,21 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
     },
     [loadSurat],
   );
+
+  const handleJenisSuratChange = useCallback((jenisSurat: SuratJenis) => {
+    setForm((previous) => {
+      const prevDefault = buildPerihalDefault(previous.jenisSurat);
+      const nextDefault = buildPerihalDefault(jenisSurat);
+      const shouldAutoReplacePerihal = !previous.perihal.trim() || previous.perihal === prevDefault;
+
+      return {
+        ...previous,
+        jenisSurat,
+        perihal: shouldAutoReplacePerihal ? nextDefault : previous.perihal,
+        isiSurat: createEmptyIsiSurat(jenisSurat),
+      };
+    });
+  }, []);
 
   const handleCreate = async () => {
     setIsSubmitting(true);
@@ -212,24 +277,18 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
           jenisSurat: form.jenisSurat,
           perihal: form.perihal,
           pendudukIds: [form.pendudukId],
-          isiSurat: form.keperluan.trim() ? { keperluan: form.keperluan.trim() } : undefined,
+          isiSurat: buildIsiSuratPayload(form.jenisSurat, form.isiSurat),
           keterangan: form.keterangan,
         }),
       });
 
-      const payload = (await response.json()) as
-        | {
-            success: true;
-          }
-        | ErrorResponse;
-
-      if (!response.ok || !payload.success) {
-        throw new Error(payload.success ? "Gagal membuat surat" : (payload.error?.message ?? "Gagal membuat surat"));
+      if (!response.ok) {
+        throw new Error(await parseErrorResponse(response));
       }
 
       toast.success("Surat berhasil dibuat");
       setOpenCreate(false);
-      setForm(EMPTY_FORM);
+      setForm(createInitialForm());
       await loadSurat();
     } catch (error) {
       console.error("[SuratPage.handleCreate]", error);
@@ -254,14 +313,13 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
         throw new Error(payload.success ? "Gagal memuat detail surat" : (payload.error?.message ?? "Gagal memuat detail surat"));
       }
 
-      const defaultPendudukId = payload.data.pendudukList[0]?.penduduk.id ?? "";
-      const isi = payload.data.isiSurat && typeof payload.data.isiSurat === "object" ? payload.data.isiSurat : {};
+      const pemohonId = payload.data.pendudukList[0]?.penduduk.id ?? "";
 
       setForm({
         jenisSurat: payload.data.jenisSurat,
         perihal: payload.data.perihal,
-        pendudukId: defaultPendudukId,
-        keperluan: typeof isi.keperluan === "string" ? isi.keperluan : "",
+        pendudukId: pemohonId,
+        isiSurat: normalizeIsiSuratInput(payload.data.jenisSurat, payload.data.isiSurat),
         keterangan: payload.data.keterangan ?? "",
       });
 
@@ -290,25 +348,19 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
         body: JSON.stringify({
           perihal: form.perihal,
           pendudukIds: [form.pendudukId],
-          isiSurat: form.keperluan.trim() ? { keperluan: form.keperluan.trim() } : undefined,
+          isiSurat: buildIsiSuratPayload(form.jenisSurat, form.isiSurat),
           keterangan: form.keterangan,
         }),
       });
 
-      const payload = (await response.json()) as
-        | {
-            success: true;
-          }
-        | ErrorResponse;
-
-      if (!response.ok || !payload.success) {
-        throw new Error(payload.success ? "Gagal mengubah surat" : (payload.error?.message ?? "Gagal mengubah surat"));
+      if (!response.ok) {
+        throw new Error(await parseErrorResponse(response));
       }
 
       toast.success("Surat berhasil diperbarui");
       setOpenEdit(false);
       setSelectedSurat(null);
-      setForm(EMPTY_FORM);
+      setForm(createInitialForm());
       await loadSurat();
     } catch (error) {
       console.error("[SuratPage.handleUpdate]", error);
@@ -328,14 +380,8 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
         method: "DELETE",
       });
 
-      const payload = (await response.json()) as
-        | {
-            success: true;
-          }
-        | ErrorResponse;
-
-      if (!response.ok || !payload.success) {
-        throw new Error(payload.success ? "Gagal menghapus surat" : (payload.error?.message ?? "Gagal menghapus surat"));
+      if (!response.ok) {
+        throw new Error(await parseErrorResponse(response));
       }
 
       toast.success("Surat berhasil dihapus");
@@ -345,6 +391,36 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
       toast.error(error instanceof Error ? error.message : "Gagal menghapus surat");
     }
   }, [deleteTarget, loadSurat]);
+
+  const handleDownloadPdf = useCallback(async (surat: SuratListItem) => {
+    try {
+      const response = await fetch(`/api/v1/surat/${surat.id}/pdf`, {
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        throw new Error(await parseErrorResponse(response));
+      }
+
+      const blob = await response.blob();
+      const fileName = `surat-${surat.nomorSurat.replaceAll("/", "-")}.pdf`;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+
+      toast.success("PDF surat berhasil diunduh");
+    } catch (error) {
+      console.error("[SuratPage.handleDownloadPdf]", error);
+      toast.error(error instanceof Error ? error.message : "Gagal mengunduh PDF surat");
+    }
+  }, []);
+
+  const dynamicFields = useMemo(() => SURAT_DYNAMIC_FIELDS[form.jenisSurat] ?? [], [form.jenisSurat]);
 
   const columns = useMemo<ColumnDef<SuratListItem>[]>(
     () => [
@@ -400,6 +476,7 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
         header: () => <div className="text-right">Aksi</div>,
         cell: ({ row }) => {
           const surat = row.original;
+          const canDownload = canPrint && ["DISETUJUI", "DICETAK", "SELESAI"].includes(surat.status);
 
           return (
             <div className="flex justify-end gap-1">
@@ -447,9 +524,13 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
                 </>
               ) : null}
 
-              {canPrint && (surat.status === "DISETUJUI" || surat.status === "DICETAK") ? (
+              {canPrint && surat.status === "DISETUJUI" ? (
                 <Button
-                  onClick={() => void runPatchAction(surat.id, "print")}
+                  onClick={() =>
+                    void runPatchAction(surat.id, "print", undefined, {
+                      successMessage: "Surat ditandai sudah dicetak",
+                    })
+                  }
                   size="icon"
                   type="button"
                   variant="outline"
@@ -458,10 +539,20 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
                 </Button>
               ) : null}
 
+              {canDownload ? (
+                <Button onClick={() => void handleDownloadPdf(surat)} size="icon" type="button" variant="outline">
+                  <Download className="h-4 w-4" />
+                </Button>
+              ) : null}
+
               {canPrint && (surat.status === "DISETUJUI" || surat.status === "DICETAK") ? (
                 <Button
                   className="text-emerald-700 hover:text-emerald-800"
-                  onClick={() => void runPatchAction(surat.id, "complete")}
+                  onClick={() =>
+                    void runPatchAction(surat.id, "complete", undefined, {
+                      successMessage: "Surat diset status selesai",
+                    })
+                  }
                   size="icon"
                   type="button"
                   variant="outline"
@@ -486,8 +577,88 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
         },
       },
     ],
-    [canApprove, canCreate, canDelete, canPrint, canUpdate, handleOpenEdit, runPatchAction],
+    [canApprove, canCreate, canDelete, canPrint, canUpdate, handleDownloadPdf, handleOpenEdit, runPatchAction],
   );
+
+  const renderDynamicFields = () => {
+    return dynamicFields.map((field) => {
+      const value = form.isiSurat[field.key] ?? "";
+      const label = field.required ? `${field.label} *` : field.label;
+
+      if (field.type === "textarea") {
+        return (
+          <div className="space-y-2" key={field.key}>
+            <Label>{label}</Label>
+            <Textarea
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  isiSurat: {
+                    ...prev.isiSurat,
+                    [field.key]: event.target.value,
+                  },
+                }))
+              }
+              placeholder={field.placeholder}
+              rows={3}
+              value={value}
+            />
+          </div>
+        );
+      }
+
+      if (field.type === "select") {
+        return (
+          <div className="space-y-2" key={field.key}>
+            <Label>{label}</Label>
+            <Select
+              onValueChange={(nextValue) =>
+                setForm((prev) => ({
+                  ...prev,
+                  isiSurat: {
+                    ...prev.isiSurat,
+                    [field.key]: nextValue,
+                  },
+                }))
+              }
+              value={value}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder={`Pilih ${field.label.toLowerCase()}`} />
+              </SelectTrigger>
+              <SelectContent>
+                {(field.options ?? []).map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        );
+      }
+
+      return (
+        <div className="space-y-2" key={field.key}>
+          <Label>{label}</Label>
+          <Input
+            onChange={(event) =>
+              setForm((prev) => ({
+                ...prev,
+                isiSurat: {
+                  ...prev.isiSurat,
+                  [field.key]: event.target.value,
+                },
+              }))
+            }
+            placeholder={field.placeholder}
+            type={field.type}
+            value={value}
+          />
+        </div>
+      );
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -495,7 +666,7 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
         {canCreate ? (
           <Button
             onClick={() => {
-              setForm(EMPTY_FORM);
+              setForm(createInitialForm());
               setOpenCreate(true);
             }}
             type="button"
@@ -522,44 +693,25 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
       />
 
       <Dialog onOpenChange={setOpenCreate} open={openCreate}>
-        <DialogContent className="sm:max-w-xl">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Buat Surat Baru</DialogTitle>
-            <DialogDescription>Isi data utama untuk membuat surat baru.</DialogDescription>
+            <DialogDescription>Isi data utama dan detail jenis surat.</DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4">
             <div className="space-y-2">
               <Label>Jenis Surat</Label>
-              <Select
-                onValueChange={(value) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    jenisSurat: value as SuratJenis,
-                  }))
-                }
-                value={form.jenisSurat}
-              >
+              <Select onValueChange={(value) => handleJenisSuratChange(value as SuratJenis)} value={form.jenisSurat}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="SK_DOMISILI">SK Domisili</SelectItem>
-                  <SelectItem value="SK_TIDAK_MAMPU">SK Tidak Mampu</SelectItem>
-                  <SelectItem value="SK_USAHA">SK Usaha</SelectItem>
-                  <SelectItem value="SK_KELAHIRAN">SK Kelahiran</SelectItem>
-                  <SelectItem value="SK_KEMATIAN">SK Kematian</SelectItem>
-                  <SelectItem value="SK_PINDAH">SK Pindah</SelectItem>
-                  <SelectItem value="SK_DATANG">SK Datang</SelectItem>
-                  <SelectItem value="SK_BELUM_MENIKAH">SK Belum Menikah</SelectItem>
-                  <SelectItem value="SK_BEDA_NAMA">SK Beda Nama</SelectItem>
-                  <SelectItem value="SK_KEHILANGAN">SK Kehilangan</SelectItem>
-                  <SelectItem value="SK_CATATAN_KEPOLISIAN">SKCK</SelectItem>
-                  <SelectItem value="SURAT_PENGANTAR">Surat Pengantar</SelectItem>
-                  <SelectItem value="SK_TANAH">SK Tanah</SelectItem>
-                  <SelectItem value="SK_PENGHASILAN">SK Penghasilan</SelectItem>
-                  <SelectItem value="SK_IZIN_KERAMAIAN">SK Izin Keramaian</SelectItem>
-                  <SelectItem value="LAINNYA">Lainnya</SelectItem>
+                  {SURAT_JENIS_OPTIONS.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -585,14 +737,15 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label>Keperluan</Label>
-              <Input onChange={(event) => setForm((prev) => ({ ...prev, keperluan: event.target.value }))} value={form.keperluan} />
-            </div>
+            {renderDynamicFields()}
 
             <div className="space-y-2">
               <Label>Keterangan</Label>
-              <Textarea onChange={(event) => setForm((prev) => ({ ...prev, keterangan: event.target.value }))} rows={3} value={form.keterangan} />
+              <Textarea
+                onChange={(event) => setForm((prev) => ({ ...prev, keterangan: event.target.value }))}
+                rows={3}
+                value={form.keterangan}
+              />
             </div>
           </div>
 
@@ -608,10 +761,10 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
       </Dialog>
 
       <Dialog onOpenChange={setOpenEdit} open={openEdit}>
-        <DialogContent className="sm:max-w-xl">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Edit Surat</DialogTitle>
-            <DialogDescription>Perubahan akan menyetel surat ditolak kembali menjadi draft.</DialogDescription>
+            <DialogDescription>Perubahan data ditolak akan kembali ke status draft.</DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4">
@@ -636,14 +789,15 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label>Keperluan</Label>
-              <Input onChange={(event) => setForm((prev) => ({ ...prev, keperluan: event.target.value }))} value={form.keperluan} />
-            </div>
+            {renderDynamicFields()}
 
             <div className="space-y-2">
               <Label>Keterangan</Label>
-              <Textarea onChange={(event) => setForm((prev) => ({ ...prev, keterangan: event.target.value }))} rows={3} value={form.keterangan} />
+              <Textarea
+                onChange={(event) => setForm((prev) => ({ ...prev, keterangan: event.target.value }))}
+                rows={3}
+                value={form.keterangan}
+              />
             </div>
           </div>
 

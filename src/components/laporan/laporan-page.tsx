@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, FileSpreadsheet, Filter } from "lucide-react";
+import { FileText, FileSpreadsheet, Filter } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Bar,
@@ -15,6 +15,8 @@ import {
   YAxis,
 } from "recharts";
 import { toast } from "sonner";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
@@ -32,6 +34,8 @@ type ErrorResponse = {
   };
 };
 
+type ReportTab = "penduduk" | "mutasi" | "surat" | "piramida";
+
 function defaultPeriod() {
   const now = new Date();
   const from = new Date(now.getFullYear(), 0, 1);
@@ -42,24 +46,99 @@ function defaultPeriod() {
   };
 }
 
-function downloadFile(content: string, fileName: string, mimeType: string) {
-  const blob = new Blob([content], { type: mimeType });
+function downloadBlob(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
   link.download = fileName;
+  document.body.appendChild(link);
   link.click();
+  link.remove();
   URL.revokeObjectURL(url);
 }
 
-function toCsv(rows: string[][]) {
-  return rows
-    .map((row) => row.map((cell) => `"${cell.replaceAll('"', '""')}"`).join(","))
-    .join("\n");
+function toHtmlTable(title: string, rows: string[][], periodLabel: string) {
+  const safe = (value: string) =>
+    value
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;");
+
+  const bodyRows = rows
+    .map(
+      (row) =>
+        `<tr><td>${safe(row[0] ?? "")}</td><td>${safe(row[1] ?? "")}</td><td>${safe(row[2] ?? "")}</td></tr>`,
+    )
+    .join("");
+
+  return `
+    <html>
+      <head>
+        <meta charset="UTF-8" />
+      </head>
+      <body>
+        <h2>${safe(title)}</h2>
+        <p>Periode: ${safe(periodLabel)}</p>
+        <table border="1" cellspacing="0" cellpadding="4">
+          <thead>
+            <tr>
+              <th>Kategori</th>
+              <th>Label</th>
+              <th>Nilai</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${bodyRows}
+          </tbody>
+        </table>
+      </body>
+    </html>
+  `;
+}
+
+function getReportRows(summary: LaporanSummary, tab: ReportTab) {
+  if (tab === "penduduk") {
+    return {
+      title: "Laporan Penduduk",
+      rows: [
+        ...summary.penduduk.byGender.map((item) => ["Gender", item.label, String(item.value)]),
+        ...summary.penduduk.byAgama.map((item) => ["Agama", item.label, String(item.value)]),
+        ...summary.penduduk.byPendidikan.map((item) => ["Pendidikan", item.label, String(item.value)]),
+        ...summary.penduduk.byPekerjaan.map((item) => ["Pekerjaan", item.label, String(item.value)]),
+        ...summary.penduduk.byDusun.map((item) => ["Dusun", item.label, String(item.value)]),
+      ],
+    };
+  }
+
+  if (tab === "mutasi") {
+    return {
+      title: "Laporan Mutasi",
+      rows: [
+        ...summary.mutasi.byJenis.map((item) => ["Jenis Mutasi", item.label, String(item.value)]),
+        ...summary.mutasi.byBulan.map((item) => ["Bulan", item.label, String(item.value)]),
+      ],
+    };
+  }
+
+  if (tab === "surat") {
+    return {
+      title: "Laporan Surat",
+      rows: [
+        ...summary.surat.byJenis.map((item) => ["Jenis Surat", item.label, String(item.value)]),
+        ...summary.surat.byStatus.map((item) => ["Status", item.label, String(item.value)]),
+      ],
+    };
+  }
+
+  return {
+    title: "Laporan Piramida Penduduk",
+    rows: summary.piramida.map((item) => ["Kelompok Umur", item.label, String(item.lakiLaki + item.perempuan)]),
+  };
 }
 
 export function LaporanPage() {
-  const [activeTab, setActiveTab] = useState("penduduk");
+  const [activeTab, setActiveTab] = useState<ReportTab>("penduduk");
   const [period, setPeriod] = useState(defaultPeriod());
   const [isLoading, setIsLoading] = useState(true);
   const [summary, setSummary] = useState<LaporanSummary | null>(null);
@@ -106,49 +185,56 @@ export function LaporanPage() {
     return `${formatTanggalIndonesia(summary.periode.fromDate)} s/d ${formatTanggalIndonesia(summary.periode.toDate)}`;
   }, [summary]);
 
-  const exportJson = () => {
+  const exportPdf = () => {
     if (!summary) {
       return;
     }
 
-    downloadFile(JSON.stringify(summary, null, 2), `laporan-${activeTab}.json`, "application/json");
+    const report = getReportRows(summary, activeTab);
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+
+    doc.setFontSize(14);
+    doc.text(report.title, 14, 16);
+    doc.setFontSize(10);
+    doc.text(`Periode: ${periodeLabel}`, 14, 22);
+
+    autoTable(doc, {
+      startY: 28,
+      head: [["Kategori", "Label", "Nilai"]],
+      body: report.rows,
+      styles: {
+        fontSize: 9,
+      },
+      headStyles: {
+        fillColor: [29, 78, 216],
+      },
+    });
+
+    const blob = doc.output("blob");
+    downloadBlob(blob, `laporan-${activeTab}.pdf`);
   };
 
-  const exportCsv = () => {
+  const exportExcel = () => {
     if (!summary) {
       return;
     }
 
-    let rows: string[][] = [["Kategori", "Label", "Nilai"]];
-
-    if (activeTab === "penduduk") {
-      rows = rows.concat(summary.penduduk.byGender.map((item) => ["Gender", item.label, String(item.value)]));
-      rows = rows.concat(summary.penduduk.byAgama.map((item) => ["Agama", item.label, String(item.value)]));
-      rows = rows.concat(summary.penduduk.byPendidikan.map((item) => ["Pendidikan", item.label, String(item.value)]));
-      rows = rows.concat(summary.penduduk.byDusun.map((item) => ["Dusun", item.label, String(item.value)]));
-    } else if (activeTab === "mutasi") {
-      rows = rows.concat(summary.mutasi.byJenis.map((item) => ["Jenis Mutasi", item.label, String(item.value)]));
-      rows = rows.concat(summary.mutasi.byBulan.map((item) => ["Bulan", item.label, String(item.value)]));
-    } else if (activeTab === "surat") {
-      rows = rows.concat(summary.surat.byJenis.map((item) => ["Jenis Surat", item.label, String(item.value)]));
-      rows = rows.concat(summary.surat.byStatus.map((item) => ["Status", item.label, String(item.value)]));
-    } else {
-      rows = rows.concat(summary.piramida.map((item) => ["Umur", item.label, String(item.lakiLaki + item.perempuan)]));
-    }
-
-    downloadFile(toCsv(rows), `laporan-${activeTab}.csv`, "text/csv;charset=utf-8");
+    const report = getReportRows(summary, activeTab);
+    const html = toHtmlTable(report.title, report.rows, periodeLabel);
+    const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" });
+    downloadBlob(blob, `laporan-${activeTab}.xls`);
   };
 
   return (
     <div className="space-y-6">
       <PageHeader description="Rekap dan analisis data kependudukan, mutasi, dan surat." title="Laporan & Statistik">
-        <Button onClick={exportJson} type="button" variant="outline">
-          <Download className="mr-2 h-4 w-4" />
-          Export JSON
+        <Button onClick={exportPdf} type="button" variant="outline">
+          <FileText className="mr-2 h-4 w-4" />
+          Export PDF
         </Button>
-        <Button onClick={exportCsv} type="button">
+        <Button onClick={exportExcel} type="button">
           <FileSpreadsheet className="mr-2 h-4 w-4" />
-          Export CSV
+          Export Excel
         </Button>
       </PageHeader>
 
@@ -184,7 +270,7 @@ export function LaporanPage() {
       {isLoading ? <p className="text-sm text-slate-600">Memuat data laporan...</p> : null}
 
       {summary ? (
-        <Tabs onValueChange={setActiveTab} value={activeTab}>
+        <Tabs onValueChange={(value) => setActiveTab(value as ReportTab)} value={activeTab}>
           <TabsList>
             <TabsTrigger value="penduduk">Penduduk</TabsTrigger>
             <TabsTrigger value="mutasi">Mutasi</TabsTrigger>

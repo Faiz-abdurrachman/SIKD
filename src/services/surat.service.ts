@@ -6,10 +6,12 @@ import { generateNomorSurat } from "@/services/nomor-surat.service";
 import { logAudit } from "@/services/audit.service";
 import type {
   CreateSuratInput,
+  JenisSuratInput,
   RejectSuratInput,
   SearchSuratInput,
   UpdateSuratInput,
 } from "@/validations/surat.schema";
+import { validateIsiSuratByJenis } from "@/validations/surat.schema";
 
 const suratInclude = {
   createdBy: {
@@ -38,6 +40,53 @@ const suratInclude = {
           keluarga: {
             select: {
               noKK: true,
+              rt: {
+                select: {
+                  nomor: true,
+                  rw: {
+                    select: {
+                      nomor: true,
+                      dusun: {
+                        select: {
+                          nama: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    orderBy: {
+      penduduk: {
+        nama: "asc",
+      },
+    },
+  },
+} satisfies Prisma.SuratInclude;
+
+const suratPdfInclude = {
+  ...suratInclude,
+  pendudukList: {
+    include: {
+      penduduk: {
+        select: {
+          id: true,
+          nik: true,
+          nama: true,
+          tempatLahir: true,
+          tanggalLahir: true,
+          jenisKelamin: true,
+          pekerjaan: true,
+          agama: true,
+          statusPerkawinan: true,
+          keluarga: {
+            select: {
+              noKK: true,
+              alamat: true,
               rt: {
                 select: {
                   nomor: true,
@@ -127,6 +176,24 @@ function toJsonValue(value?: Record<string, unknown>) {
   }
 
   return value as Prisma.InputJsonValue;
+}
+
+function validateIsiSuratPayload(jenisSurat: JenisSuratInput, isiSurat: unknown) {
+  const parsed = validateIsiSuratByJenis(jenisSurat, isiSurat ?? {});
+
+  if (!parsed.success) {
+    throw createServiceError(
+      ERROR_CODES.VALIDATION_ERROR,
+      "Isi surat tidak valid",
+      400,
+      parsed.error.issues.map((issue) => ({
+        field: ["isiSurat", ...issue.path].join("."),
+        message: issue.message,
+      })),
+    );
+  }
+
+  return parsed.data as Record<string, unknown>;
 }
 
 function uniqIds(ids: string[]) {
@@ -267,17 +334,50 @@ export const suratService = {
     return surat;
   },
 
+  async getForPdf(id: string) {
+    const surat = await prisma.surat.findUnique({
+      where: { id },
+      include: suratPdfInclude,
+    });
+
+    if (!surat) {
+      throw createServiceError(ERROR_CODES.NOT_FOUND, "Data surat tidak ditemukan", 404);
+    }
+
+    const desa = await prisma.desa.findFirst({
+      select: {
+        id: true,
+        kode: true,
+        nama: true,
+        kecamatan: true,
+        kabupaten: true,
+        provinsi: true,
+        alamatKantor: true,
+        telepon: true,
+        email: true,
+        namaKepalaDesa: true,
+      },
+    });
+
+    if (!desa) {
+      throw createServiceError(ERROR_CODES.NOT_FOUND, "Data desa tidak ditemukan", 404);
+    }
+
+    return { surat, desa };
+  },
+
   async create(data: CreateSuratInput, actorUserId: string, meta?: RequestMeta) {
     const created = await prisma.$transaction(async (tx) => {
       const pendudukIds = await validatePendudukIds(tx, data.pendudukIds);
       const nomorSurat = await generateNomorSurat(data.jenisSurat as JenisSurat, tx);
+      const isiSurat = validateIsiSuratPayload(data.jenisSurat, data.isiSurat ?? {});
 
       return tx.surat.create({
         data: {
           nomorSurat,
           jenisSurat: data.jenisSurat as JenisSurat,
           perihal: data.perihal,
-          isiSurat: toJsonValue(data.isiSurat),
+          isiSurat: toJsonValue(isiSurat),
           keterangan: toNullableString(data.keterangan),
           createdById: actorUserId,
           status: StatusSurat.DRAFT,
@@ -321,16 +421,21 @@ export const suratService = {
 
     const updated = await prisma.$transaction(async (tx) => {
       let pendudukIds: string[] | undefined;
+      let isiSuratData: Record<string, unknown> | undefined;
 
       if (data.pendudukIds) {
         pendudukIds = await validatePendudukIds(tx, data.pendudukIds);
+      }
+
+      if (data.isiSurat !== undefined) {
+        isiSuratData = validateIsiSuratPayload(existing.jenisSurat as JenisSuratInput, data.isiSurat);
       }
 
       await tx.surat.update({
         where: { id },
         data: {
           ...(data.perihal !== undefined ? { perihal: data.perihal } : {}),
-          ...(data.isiSurat !== undefined ? { isiSurat: toJsonValue(data.isiSurat) } : {}),
+          ...(data.isiSurat !== undefined ? { isiSurat: toJsonValue(isiSuratData) } : {}),
           ...(data.keterangan !== undefined ? { keterangan: toNullableString(data.keterangan) } : {}),
           ...(existing.status === StatusSurat.DITOLAK
             ? {
@@ -414,7 +519,16 @@ export const suratService = {
   },
 
   async submitForApproval(id: string, actorUserId: string, meta?: RequestMeta) {
-    const existing = await prisma.surat.findUnique({ where: { id } });
+    const existing = await prisma.surat.findUnique({
+      where: { id },
+      include: {
+        pendudukList: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
 
     if (!existing) {
       throw createServiceError(ERROR_CODES.NOT_FOUND, "Data surat tidak ditemukan", 404);
@@ -424,11 +538,23 @@ export const suratService = {
       throw createServiceError("INVALID_INPUT", "Surat hanya bisa diajukan dari status DRAFT atau DITOLAK", 400);
     }
 
+    if (existing.pendudukList.length === 0) {
+      throw createServiceError("INVALID_INPUT", "Surat tidak memiliki penduduk terkait", 400, [
+        { field: "pendudukIds", message: "Minimal satu penduduk harus dipilih" },
+      ]);
+    }
+
+    const validIsiSurat = validateIsiSuratPayload(
+      existing.jenisSurat as JenisSuratInput,
+      (existing.isiSurat ?? {}) as Record<string, unknown>,
+    );
+
     const updated = await prisma.surat.update({
       where: { id },
       data: {
         status: StatusSurat.MENUNGGU_PERSETUJUAN,
         alasanTolak: null,
+        isiSurat: toJsonValue(validIsiSurat),
       },
       include: suratInclude,
     });
