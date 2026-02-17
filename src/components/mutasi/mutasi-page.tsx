@@ -23,7 +23,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatEnumLabel, formatTanggalIndonesia } from "@/lib/format";
-import type { MutasiListItem, MutasiListResponse } from "@/types/mutasi.types";
+import { fetchAllPages } from "@/lib/paginated-client-fetch";
+import type { MutasiListItem } from "@/types/mutasi.types";
 
 type ErrorResponse = {
   success: false;
@@ -105,8 +106,6 @@ const EMPTY_FORM: MutasiFormState = {
   statusHubungan: "ANAK",
 };
 
-const LIST_QUERY = "page=1&limit=500&sortBy=tanggalMutasi&sortOrder=desc";
-
 export function MutasiPage({ canCreate }: { canCreate: boolean }) {
   const [rows, setRows] = useState<MutasiListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -122,18 +121,13 @@ export function MutasiPage({ canCreate }: { canCreate: boolean }) {
     setIsLoading(true);
 
     try {
-      const response = await fetch(`/api/v1/mutasi?${LIST_QUERY}`, {
-        cache: "no-store",
+      const data = await fetchAllPages<MutasiListItem>({
+        endpoint: "/api/v1/mutasi",
+        sortBy: "tanggalMutasi",
+        sortOrder: "desc",
+        errorMessage: "Gagal memuat data mutasi",
       });
-
-      const payload = (await response.json()) as MutasiListResponse | ErrorResponse;
-
-      if (!response.ok || !payload.success) {
-        const message = payload.success ? "Gagal memuat data mutasi" : (payload.error?.message ?? "Gagal memuat data mutasi");
-        throw new Error(message);
-      }
-
-      setRows(payload.data);
+      setRows(data);
     } catch (error) {
       console.error("[MutasiPage.loadMutasi]", error);
       toast.error(error instanceof Error ? error.message : "Gagal memuat data mutasi");
@@ -145,28 +139,22 @@ export function MutasiPage({ canCreate }: { canCreate: boolean }) {
 
   const loadOptions = useCallback(async () => {
     try {
-      const [keluargaRes, pendudukRes] = await Promise.all([
-        fetch("/api/v1/keluarga?page=1&limit=500&sortBy=noKK&sortOrder=asc", { cache: "no-store" }),
-        fetch("/api/v1/penduduk?page=1&limit=500&sortBy=nama&sortOrder=asc", { cache: "no-store" }),
+      const [keluargaData, pendudukData] = await Promise.all([
+        fetchAllPages<KeluargaOption>({
+          endpoint: "/api/v1/keluarga",
+          sortBy: "noKK",
+          sortOrder: "asc",
+          errorMessage: "Gagal memuat data KK",
+        }),
+        fetchAllPages<PendudukOption>({
+          endpoint: "/api/v1/penduduk",
+          sortBy: "nama",
+          sortOrder: "asc",
+          errorMessage: "Gagal memuat data penduduk",
+        }),
       ]);
-
-      const keluargaPayload = (await keluargaRes.json()) as
-        | { success: true; data: KeluargaOption[] }
-        | ErrorResponse;
-      const pendudukPayload = (await pendudukRes.json()) as
-        | { success: true; data: PendudukOption[] }
-        | ErrorResponse;
-
-      if (!keluargaRes.ok || !keluargaPayload.success) {
-        throw new Error(keluargaPayload.success ? "Gagal memuat data KK" : (keluargaPayload.error?.message ?? "Gagal memuat data KK"));
-      }
-
-      if (!pendudukRes.ok || !pendudukPayload.success) {
-        throw new Error(pendudukPayload.success ? "Gagal memuat data penduduk" : (pendudukPayload.error?.message ?? "Gagal memuat data penduduk"));
-      }
-
-      setKeluargaOptions(keluargaPayload.data);
-      setPendudukOptions(pendudukPayload.data);
+      setKeluargaOptions(keluargaData);
+      setPendudukOptions(pendudukData);
     } catch (error) {
       console.error("[MutasiPage.loadOptions]", error);
       toast.error(error instanceof Error ? error.message : "Gagal memuat opsi data mutasi");
@@ -175,8 +163,19 @@ export function MutasiPage({ canCreate }: { canCreate: boolean }) {
 
   useEffect(() => {
     void loadMutasi();
+  }, [loadMutasi]);
+
+  useEffect(() => {
+    if (!canCreate || !openCreate) {
+      return;
+    }
+
+    if (keluargaOptions.length && pendudukOptions.length) {
+      return;
+    }
+
     void loadOptions();
-  }, [loadMutasi, loadOptions]);
+  }, [canCreate, keluargaOptions.length, loadOptions, openCreate, pendudukOptions.length]);
 
   const stats = useMemo(
     () => ({

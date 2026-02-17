@@ -43,7 +43,8 @@ import {
   SURAT_JENIS_OPTIONS,
 } from "@/lib/surat-fields";
 import { formatEnumLabel, formatTanggalIndonesia } from "@/lib/format";
-import type { SuratDetailResponse, SuratJenis, SuratListItem, SuratListResponse } from "@/types/surat.types";
+import { fetchAllPages } from "@/lib/paginated-client-fetch";
+import type { SuratDetailResponse, SuratJenis, SuratListItem } from "@/types/surat.types";
 
 type ErrorResponse = {
   success: false;
@@ -66,8 +67,6 @@ type SuratFormState = {
   isiSurat: Record<string, string>;
   keterangan: string;
 };
-
-const LIST_QUERY = "page=1&limit=500&sortBy=tanggalSurat&sortOrder=desc";
 
 type SuratPageProps = {
   canCreate: boolean;
@@ -146,18 +145,13 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
     setIsLoading(true);
 
     try {
-      const response = await fetch(`/api/v1/surat?${LIST_QUERY}`, {
-        cache: "no-store",
+      const data = await fetchAllPages<SuratListItem>({
+        endpoint: "/api/v1/surat",
+        sortBy: "tanggalSurat",
+        sortOrder: "desc",
+        errorMessage: "Gagal memuat data surat",
       });
-
-      const payload = (await response.json()) as SuratListResponse | ErrorResponse;
-
-      if (!response.ok || !payload.success) {
-        const message = payload.success ? "Gagal memuat data surat" : (payload.error?.message ?? "Gagal memuat data surat");
-        throw new Error(message);
-      }
-
-      setRows(payload.data);
+      setRows(data);
     } catch (error) {
       console.error("[SuratPage.loadSurat]", error);
       toast.error(error instanceof Error ? error.message : "Gagal memuat data surat");
@@ -169,24 +163,14 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
 
   const loadPendudukOptions = useCallback(async () => {
     try {
-      const response = await fetch("/api/v1/penduduk?page=1&limit=500&sortBy=nama&sortOrder=asc", {
-        cache: "no-store",
+      const data = await fetchAllPages<PendudukOption>({
+        endpoint: "/api/v1/penduduk",
+        sortBy: "nama",
+        sortOrder: "asc",
+        errorMessage: "Gagal memuat daftar penduduk",
       });
-
-      const payload = (await response.json()) as
-        | {
-            success: true;
-            data: PendudukOption[];
-          }
-        | ErrorResponse;
-
-      if (!response.ok || !payload.success) {
-        const message = payload.success ? "Gagal memuat daftar penduduk" : (payload.error?.message ?? "Gagal memuat daftar penduduk");
-        throw new Error(message);
-      }
-
       setPendudukOptions(
-        payload.data.filter(
+        data.filter(
           (item) => item.statusKependudukan === "TETAP" || item.statusKependudukan === "SEMENTARA",
         ),
       );
@@ -199,8 +183,15 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
 
   useEffect(() => {
     void loadSurat();
+  }, [loadSurat]);
+
+  useEffect(() => {
+    if ((!openCreate && !openEdit) || pendudukOptions.length) {
+      return;
+    }
+
     void loadPendudukOptions();
-  }, [loadSurat, loadPendudukOptions]);
+  }, [loadPendudukOptions, openCreate, openEdit, pendudukOptions.length]);
 
   const stats = useMemo(
     () => ({

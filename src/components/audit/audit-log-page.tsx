@@ -14,14 +14,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatEnumLabel, formatTanggalIndonesia } from "@/lib/format";
-import type { AuditListItem, AuditListResponse } from "@/types/audit.types";
-
-type ErrorResponse = {
-  success: false;
-  error?: {
-    message?: string;
-  };
-};
+import { fetchAllPages } from "@/lib/paginated-client-fetch";
+import type { AuditListItem } from "@/types/audit.types";
 
 type AuditFilter = {
   q: string;
@@ -42,51 +36,27 @@ const EMPTY_FILTER: AuditFilter = {
 export function AuditLogPage() {
   const [rows, setRows] = useState<AuditListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [filter, setFilter] = useState<AuditFilter>(EMPTY_FILTER);
+  const [draftFilter, setDraftFilter] = useState<AuditFilter>(EMPTY_FILTER);
+  const [appliedFilter, setAppliedFilter] = useState<AuditFilter>(EMPTY_FILTER);
 
   const loadLogs = useCallback(async () => {
     setIsLoading(true);
 
     try {
-      const params = new URLSearchParams({
-        page: "1",
-        limit: "500",
+      const data = await fetchAllPages<AuditListItem>({
+        endpoint: "/api/v1/audit-logs",
         sortBy: "createdAt",
         sortOrder: "desc",
+        errorMessage: "Gagal memuat audit log",
+        query: {
+          q: appliedFilter.q,
+          entity: appliedFilter.entity !== "all" ? appliedFilter.entity : undefined,
+          action: appliedFilter.action !== "all" ? appliedFilter.action : undefined,
+          fromDate: appliedFilter.fromDate,
+          toDate: appliedFilter.toDate,
+        },
       });
-
-      if (filter.q.trim()) {
-        params.set("q", filter.q.trim());
-      }
-
-      if (filter.entity !== "all") {
-        params.set("entity", filter.entity);
-      }
-
-      if (filter.action !== "all") {
-        params.set("action", filter.action);
-      }
-
-      if (filter.fromDate) {
-        params.set("fromDate", filter.fromDate);
-      }
-
-      if (filter.toDate) {
-        params.set("toDate", filter.toDate);
-      }
-
-      const response = await fetch(`/api/v1/audit-logs?${params.toString()}`, {
-        cache: "no-store",
-      });
-
-      const payload = (await response.json()) as AuditListResponse | ErrorResponse;
-
-      if (!response.ok || !payload.success) {
-        const message = payload.success ? "Gagal memuat audit log" : (payload.error?.message ?? "Gagal memuat audit log");
-        throw new Error(message);
-      }
-
-      setRows(payload.data);
+      setRows(data);
     } catch (error) {
       console.error("[AuditLogPage.loadLogs]", error);
       toast.error(error instanceof Error ? error.message : "Gagal memuat audit log");
@@ -94,7 +64,7 @@ export function AuditLogPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [filter]);
+  }, [appliedFilter]);
 
   useEffect(() => {
     void loadLogs();
@@ -184,15 +154,15 @@ export function AuditLogPage() {
           <div className="space-y-2">
             <Label>Kata Kunci</Label>
             <Input
-              onChange={(event) => setFilter((prev) => ({ ...prev, q: event.target.value }))}
+              onChange={(event) => setDraftFilter((prev) => ({ ...prev, q: event.target.value }))}
               placeholder="Cari action/entity/user"
-              value={filter.q}
+              value={draftFilter.q}
             />
           </div>
 
           <div className="space-y-2">
             <Label>Entity</Label>
-            <Select onValueChange={(value) => setFilter((prev) => ({ ...prev, entity: value }))} value={filter.entity}>
+            <Select onValueChange={(value) => setDraftFilter((prev) => ({ ...prev, entity: value }))} value={draftFilter.entity}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -209,7 +179,7 @@ export function AuditLogPage() {
 
           <div className="space-y-2">
             <Label>Aksi</Label>
-            <Select onValueChange={(value) => setFilter((prev) => ({ ...prev, action: value }))} value={filter.action}>
+            <Select onValueChange={(value) => setDraftFilter((prev) => ({ ...prev, action: value }))} value={draftFilter.action}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -227,27 +197,28 @@ export function AuditLogPage() {
           <div className="space-y-2">
             <Label>Dari Tanggal</Label>
             <Input
-              onChange={(event) => setFilter((prev) => ({ ...prev, fromDate: event.target.value }))}
+              onChange={(event) => setDraftFilter((prev) => ({ ...prev, fromDate: event.target.value }))}
               type="date"
-              value={filter.fromDate}
+              value={draftFilter.fromDate}
             />
           </div>
 
           <div className="space-y-2">
             <Label>Sampai Tanggal</Label>
             <Input
-              onChange={(event) => setFilter((prev) => ({ ...prev, toDate: event.target.value }))}
+              onChange={(event) => setDraftFilter((prev) => ({ ...prev, toDate: event.target.value }))}
               type="date"
-              value={filter.toDate}
+              value={draftFilter.toDate}
             />
           </div>
         </div>
 
         <div className="mt-3 flex gap-2">
-          <Button onClick={() => void loadLogs()} type="button">Terapkan Filter</Button>
+          <Button onClick={() => setAppliedFilter({ ...draftFilter })} type="button">Terapkan Filter</Button>
           <Button
             onClick={() => {
-              setFilter(EMPTY_FILTER);
+              setDraftFilter({ ...EMPTY_FILTER });
+              setAppliedFilter({ ...EMPTY_FILTER });
             }}
             type="button"
             variant="outline"

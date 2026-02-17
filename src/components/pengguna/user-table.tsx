@@ -31,7 +31,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ROLE_LABEL } from "@/lib/constants";
 import { formatTanggalIndonesia } from "@/lib/format";
-import type { UserListItem, UserListResponse } from "@/types/user.types";
+import { fetchAllPages } from "@/lib/paginated-client-fetch";
+import type { UserListItem } from "@/types/user.types";
 
 type ErrorResponse = {
   success: false;
@@ -58,8 +59,6 @@ const EMPTY_FORM: UserFormState = {
   isActive: true,
 };
 
-const LIST_QUERY = "page=1&limit=500&sortBy=createdAt&sortOrder=desc";
-
 export function UserTable() {
   const [rows, setRows] = useState<UserListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -81,18 +80,13 @@ export function UserTable() {
     setIsLoading(true);
 
     try {
-      const response = await fetch(`/api/v1/users?${LIST_QUERY}`, {
-        cache: "no-store",
+      const data = await fetchAllPages<UserListItem>({
+        endpoint: "/api/v1/users",
+        sortBy: "createdAt",
+        sortOrder: "desc",
+        errorMessage: "Gagal memuat data user",
       });
-
-      const result = (await response.json()) as UserListResponse | ErrorResponse;
-
-      if (!response.ok || !result.success) {
-        const message = result.success ? "Gagal memuat data user" : (result.error?.message ?? "Gagal memuat data user");
-        throw new Error(message);
-      }
-
-      setRows(result.data);
+      setRows(data);
     } catch (error) {
       console.error("[UserTable.loadUsers]", error);
       toast.error(error instanceof Error ? error.message : "Gagal memuat data user");

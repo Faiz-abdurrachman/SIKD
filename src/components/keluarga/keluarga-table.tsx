@@ -12,7 +12,8 @@ import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { KeluargaListItem, KeluargaListResponse } from "@/types/keluarga.types";
+import { fetchAllPages } from "@/lib/paginated-client-fetch";
+import type { KeluargaListItem } from "@/types/keluarga.types";
 
 type ErrorResponse = {
   success: false;
@@ -27,8 +28,6 @@ type KeluargaTableProps = {
   canDelete: boolean;
 };
 
-const LIST_QUERY = "page=1&limit=500&sortBy=noKK&sortOrder=asc";
-
 export function KeluargaTable({ canCreate, canUpdate, canDelete }: KeluargaTableProps) {
   const [rows, setRows] = useState<KeluargaListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -38,18 +37,13 @@ export function KeluargaTable({ canCreate, canUpdate, canDelete }: KeluargaTable
     setIsLoading(true);
 
     try {
-      const response = await fetch(`/api/v1/keluarga?${LIST_QUERY}`, {
-        cache: "no-store",
+      const data = await fetchAllPages<KeluargaListItem>({
+        endpoint: "/api/v1/keluarga",
+        sortBy: "noKK",
+        sortOrder: "asc",
+        errorMessage: "Gagal memuat data keluarga",
       });
-
-      const result = (await response.json()) as KeluargaListResponse | ErrorResponse;
-
-      if (!response.ok || !result.success) {
-        const message = result.success ? "Gagal memuat data keluarga" : (result.error?.message ?? "Gagal memuat data keluarga");
-        throw new Error(message);
-      }
-
-      setRows(result.data);
+      setRows(data);
     } catch (error) {
       console.error("[KeluargaTable.loadKeluarga]", error);
       toast.error(error instanceof Error ? error.message : "Gagal memuat data keluarga");

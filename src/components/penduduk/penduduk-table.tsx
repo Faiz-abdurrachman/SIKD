@@ -15,7 +15,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LABEL_MAP } from "@/lib/constants";
 import { formatTanggalIndonesia } from "@/lib/format";
-import type { PendudukListItem, PendudukListResponse } from "@/types/penduduk.types";
+import { fetchAllPages } from "@/lib/paginated-client-fetch";
+import type { PendudukListItem } from "@/types/penduduk.types";
 
 type ErrorResponse = {
   success: false;
@@ -30,8 +31,6 @@ type PendudukTableProps = {
   canDelete: boolean;
 };
 
-const LIST_QUERY = "page=1&limit=500&sortBy=nama&sortOrder=asc";
-
 export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTableProps) {
   const [rows, setRows] = useState<PendudukListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -41,18 +40,13 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
     setIsLoading(true);
 
     try {
-      const response = await fetch(`/api/v1/penduduk?${LIST_QUERY}`, {
-        cache: "no-store",
+      const data = await fetchAllPages<PendudukListItem>({
+        endpoint: "/api/v1/penduduk",
+        sortBy: "nama",
+        sortOrder: "asc",
+        errorMessage: "Gagal memuat data penduduk",
       });
-
-      const result = (await response.json()) as PendudukListResponse | ErrorResponse;
-
-      if (!response.ok || !result.success) {
-        const message = result.success ? "Gagal memuat data penduduk" : (result.error?.message ?? "Gagal memuat data penduduk");
-        throw new Error(message);
-      }
-
-      setRows(result.data);
+      setRows(data);
     } catch (error) {
       console.error("[PendudukTable.loadPenduduk]", error);
       toast.error(error instanceof Error ? error.message : "Gagal memuat data penduduk");
