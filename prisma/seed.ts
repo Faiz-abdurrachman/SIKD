@@ -119,6 +119,7 @@ async function main() {
       email: "admin@sidesa.local",
       passwordHash: adminPassword,
       role: UserRole.SUPER_ADMIN,
+      isActive: true,
     },
   });
 
@@ -129,6 +130,7 @@ async function main() {
       email: "kades@sidesa.local",
       passwordHash: userPassword,
       role: UserRole.KEPALA_DESA,
+      isActive: true,
     },
   });
 
@@ -139,6 +141,7 @@ async function main() {
       email: "sekdes@sidesa.local",
       passwordHash: userPassword,
       role: UserRole.SEKRETARIS,
+      isActive: true,
     },
   });
 
@@ -149,6 +152,7 @@ async function main() {
       email: "operator@sidesa.local",
       passwordHash: userPassword,
       role: UserRole.OPERATOR,
+      isActive: true,
     },
   });
 

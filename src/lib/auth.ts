@@ -23,9 +23,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
 
         const { username, password } = parsedCredentials.data;
+        const normalizedUsername = username.trim();
 
-        const user = await prisma.user.findUnique({
-          where: { username },
+        const user = await prisma.user.findFirst({
+          where: {
+            username: {
+              equals: normalizedUsername,
+              mode: "insensitive",
+            },
+          },
         });
 
         if (!user || !user.isActive) {

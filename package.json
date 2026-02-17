@@ -13,7 +13,8 @@
     "docker:logs": "docker compose -f docker/docker-compose.yml logs -f --tail=200",
     "deploy:prod": "bash scripts/deploy.sh",
     "backup:db": "bash scripts/backup.sh",
-    "restore:db": "bash scripts/restore.sh"
+    "restore:db": "bash scripts/restore.sh",
+    "verify:seed-users": "node scripts/verify-seed-users.mjs"
   },
   "engines": {
     "node": "20.x"
