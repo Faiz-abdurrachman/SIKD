@@ -458,4 +458,3 @@ echo "== CONTAINERS ==" && docker compose -f docker/docker-compose.yml ps
 ```bash
 sudo pacman -Syu
 ```
-
