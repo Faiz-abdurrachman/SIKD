@@ -318,7 +318,55 @@ SET
 WHERE username = 'kades';
 ```
 
-## 14. Struktur Deploy
+## 14. E2E Smoke Test (Playwright)
+
+E2E smoke test sudah disiapkan untuk validasi:
+
+1. Redirect auth (guest wajib ke `/login`).
+2. Login gagal menampilkan error.
+3. Login + RBAC menu/route untuk 4 role (`admin`, `kades`, `sekdes`, `operator`).
+4. Cek modul utama tanpa console error `Parameter pencarian tidak valid`.
+
+### 14.1 Install browser E2E (sekali per mesin)
+
+```bash
+npm run test:e2e:install
+```
+
+### 14.2 Jalankan E2E smoke test
+
+```bash
+npm run test:e2e
+```
+
+Mode headed:
+
+```bash
+npm run test:e2e:headed
+```
+
+Mode UI:
+
+```bash
+npm run test:e2e:ui
+```
+
+Output report:
+
+- HTML report: `playwright-report/index.html`
+- Raw result: `test-results/`
+
+Catatan:
+
+1. Jalankan migrate + seed dulu (`npx prisma migrate dev` dan `npx prisma db seed`).
+2. Default credential E2E mengikuti seed.
+3. Bisa override credential via env:
+   - `E2E_ADMIN_USERNAME`, `E2E_ADMIN_PASSWORD`
+   - `E2E_KADES_USERNAME`, `E2E_KADES_PASSWORD`
+   - `E2E_SEKDES_USERNAME`, `E2E_SEKDES_PASSWORD`
+   - `E2E_OPERATOR_USERNAME`, `E2E_OPERATOR_PASSWORD`
+
+## 15. Struktur Deploy
 
 - Dockerfile: `docker/Dockerfile`
 - Compose: `docker/docker-compose.yml`

@@ -1,0 +1,66 @@
+name: CI Smoke
+
+on:
+  pull_request:
+    branches: ["main"]
+  push:
+    branches: ["main"]
+
+jobs:
+  quality-and-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: sidesa
+          POSTGRES_PASSWORD: sidesa_password
+          POSTGRES_DB: sidesa_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U sidesa -d sidesa_db"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      DATABASE_URL: postgresql://sidesa:sidesa_password@localhost:5432/sidesa_db
+      NEXTAUTH_SECRET: ci-nextauth-secret-minimum-32-characters
+      NEXTAUTH_URL: http://127.0.0.1:3000
+      PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
+      PORT: 3000
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run migration
+        run: npx prisma migrate deploy
+
+      - name: Seed database
+        run: npx prisma db seed
+
+      - name: Verify seeded users
+        run: npm run verify:seed-users
+
+      - name: Lint
+        run: npm run lint -- --max-warnings=0
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E smoke
+        run: npm run test:e2e
