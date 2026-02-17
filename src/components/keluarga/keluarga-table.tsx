@@ -31,6 +31,15 @@ type KeluargaTableProps = {
   canDelete: boolean;
 };
 
+type WilayahOptionsResponse = {
+  success: true;
+  data: {
+    dusun: Array<{ id: string; nama: string }>;
+    rw: Array<{ id: string; nomor: string; dusunId: string; dusun: { nama: string } }>;
+    rt: Array<{ id: string; nomor: string; rwId: string; rw: { nomor: string; dusunId: string; dusun: { nama: string } } }>;
+  };
+};
+
 type KeluargaFilter = {
   q: string;
   dusunId: string;
@@ -51,6 +60,11 @@ export function KeluargaTable({ canCreate, canUpdate, canDelete }: KeluargaTable
   const [deleteTarget, setDeleteTarget] = useState<KeluargaListItem | null>(null);
   const [draftFilter, setDraftFilter] = useState<KeluargaFilter>(EMPTY_FILTER);
   const [appliedFilter, setAppliedFilter] = useState<KeluargaFilter>(EMPTY_FILTER);
+  const [wilayahOptions, setWilayahOptions] = useState<WilayahOptionsResponse["data"]>({
+    dusun: [],
+    rw: [],
+    rt: [],
+  });
   const [pagination, setPagination] = useState({
     page: 1,
     pageSize: 20,
@@ -97,6 +111,38 @@ export function KeluargaTable({ canCreate, canUpdate, canDelete }: KeluargaTable
     void loadKeluarga();
   }, [loadKeluarga]);
 
+  const loadWilayahOptions = useCallback(async () => {
+    try {
+      const response = await fetch("/api/v1/wilayah/options", {
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        throw new Error("Gagal memuat opsi wilayah");
+      }
+
+      const payload = (await response.json()) as WilayahOptionsResponse | ErrorResponse;
+
+      if (!payload.success) {
+        throw new Error(payload.error?.message ?? "Gagal memuat opsi wilayah");
+      }
+
+      setWilayahOptions(payload.data);
+    } catch (error) {
+      console.error("[KeluargaTable.loadWilayahOptions]", error);
+      toast.error(error instanceof Error ? error.message : "Gagal memuat opsi wilayah");
+      setWilayahOptions({
+        dusun: [],
+        rw: [],
+        rt: [],
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadWilayahOptions();
+  }, [loadWilayahOptions]);
+
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) {
       return;
@@ -138,49 +184,31 @@ export function KeluargaTable({ canCreate, canUpdate, canDelete }: KeluargaTable
     };
   }, [pagination.total, rows]);
 
-  const dusunOptions = useMemo(() => {
-    return Array.from(
-      new Map(
-        rows.map((item) => [item.rt.rw.dusun.id, { id: item.rt.rw.dusun.id, nama: item.rt.rw.dusun.nama }]),
-      ).values(),
-    ).sort((a, b) => a.nama.localeCompare(b.nama));
-  }, [rows]);
+  const dusunOptions = useMemo(() => wilayahOptions.dusun, [wilayahOptions.dusun]);
 
   const rwOptions = useMemo(() => {
-    return Array.from(
-      new Map(
-        rows.map((item) => [
-          item.rt.rw.id,
-          {
-            id: item.rt.rw.id,
-            nomor: item.rt.rw.nomor,
-            dusunId: item.rt.rw.dusun.id,
-            dusunNama: item.rt.rw.dusun.nama,
-          },
-        ]),
-      ).values(),
-    )
+    return wilayahOptions.rw
+      .map((item) => ({
+        id: item.id,
+        nomor: item.nomor,
+        dusunId: item.dusunId,
+        dusunNama: item.dusun.nama,
+      }))
       .filter((item) => draftFilter.dusunId === "all" || item.dusunId === draftFilter.dusunId)
       .sort((a, b) => a.nomor.localeCompare(b.nomor));
-  }, [draftFilter.dusunId, rows]);
+  }, [draftFilter.dusunId, wilayahOptions.rw]);
 
   const rtOptions = useMemo(() => {
-    return Array.from(
-      new Map(
-        rows.map((item) => [
-          item.rt.id,
-          {
-            id: item.rt.id,
-            nomor: item.rt.nomor,
-            rwId: item.rt.rw.id,
-            rwNomor: item.rt.rw.nomor,
-          },
-        ]),
-      ).values(),
-    )
+    return wilayahOptions.rt
+      .map((item) => ({
+        id: item.id,
+        nomor: item.nomor,
+        rwId: item.rwId,
+        rwNomor: item.rw.nomor,
+      }))
       .filter((item) => draftFilter.rwId === "all" || item.rwId === draftFilter.rwId)
       .sort((a, b) => a.nomor.localeCompare(b.nomor));
-  }, [draftFilter.rwId, rows]);
+  }, [draftFilter.rwId, wilayahOptions.rt]);
 
   const columns = useMemo<ColumnDef<KeluargaListItem>[]>(
     () => [

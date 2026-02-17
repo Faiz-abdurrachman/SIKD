@@ -34,6 +34,15 @@ type PendudukTableProps = {
   canDelete: boolean;
 };
 
+type WilayahOptionsResponse = {
+  success: true;
+  data: {
+    dusun: Array<{ id: string; nama: string }>;
+    rw: Array<{ id: string; nomor: string; dusunId: string; dusun: { nama: string } }>;
+    rt: Array<{ id: string; nomor: string; rwId: string; rw: { nomor: string; dusunId: string; dusun: { nama: string } } }>;
+  };
+};
+
 type PendudukFilter = {
   q: string;
   nik: string;
@@ -43,6 +52,9 @@ type PendudukFilter = {
   statusKependudukan: "all" | "TETAP" | "SEMENTARA" | "PINDAH" | "MENINGGAL";
   pendidikanTerakhir: "all" | "TIDAK_SEKOLAH" | "SD" | "SMP" | "SMA" | "D1" | "D2" | "D3" | "S1" | "S2" | "S3";
   pekerjaan: string;
+  dusunId: string;
+  rwId: string;
+  rtId: string;
 };
 
 const EMPTY_FILTER: PendudukFilter = {
@@ -54,6 +66,9 @@ const EMPTY_FILTER: PendudukFilter = {
   statusKependudukan: "all",
   pendidikanTerakhir: "all",
   pekerjaan: "",
+  dusunId: "all",
+  rwId: "all",
+  rtId: "all",
 };
 
 export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTableProps) {
@@ -62,6 +77,11 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
   const [deleteTarget, setDeleteTarget] = useState<PendudukListItem | null>(null);
   const [draftFilter, setDraftFilter] = useState<PendudukFilter>(EMPTY_FILTER);
   const [appliedFilter, setAppliedFilter] = useState<PendudukFilter>(EMPTY_FILTER);
+  const [wilayahOptions, setWilayahOptions] = useState<WilayahOptionsResponse["data"]>({
+    dusun: [],
+    rw: [],
+    rt: [],
+  });
   const [pagination, setPagination] = useState({
     page: 1,
     pageSize: 20,
@@ -91,6 +111,9 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
           pendidikanTerakhir:
             appliedFilter.pendidikanTerakhir !== "all" ? appliedFilter.pendidikanTerakhir : undefined,
           pekerjaan: appliedFilter.pekerjaan,
+          dusunId: appliedFilter.dusunId !== "all" ? appliedFilter.dusunId : undefined,
+          rwId: appliedFilter.rwId !== "all" ? appliedFilter.rwId : undefined,
+          rtId: appliedFilter.rtId !== "all" ? appliedFilter.rtId : undefined,
         },
       });
       setRows(result.data);
@@ -113,6 +136,38 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
   useEffect(() => {
     void loadPenduduk();
   }, [loadPenduduk]);
+
+  const loadWilayahOptions = useCallback(async () => {
+    try {
+      const response = await fetch("/api/v1/wilayah/options", {
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        throw new Error("Gagal memuat opsi wilayah");
+      }
+
+      const payload = (await response.json()) as WilayahOptionsResponse | ErrorResponse;
+
+      if (!payload.success) {
+        throw new Error(payload.error?.message ?? "Gagal memuat opsi wilayah");
+      }
+
+      setWilayahOptions(payload.data);
+    } catch (error) {
+      console.error("[PendudukTable.loadWilayahOptions]", error);
+      toast.error(error instanceof Error ? error.message : "Gagal memuat opsi wilayah");
+      setWilayahOptions({
+        dusun: [],
+        rw: [],
+        rt: [],
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadWilayahOptions();
+  }, [loadWilayahOptions]);
 
   const handleDelete = useCallback(async () => {
     if (!deleteTarget) {
@@ -152,6 +207,30 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
     }),
     [pagination.total, rows],
   );
+
+  const rwOptions = useMemo(() => {
+    return wilayahOptions.rw
+      .map((item) => ({
+        id: item.id,
+        nomor: item.nomor,
+        dusunId: item.dusunId,
+        dusunNama: item.dusun.nama,
+      }))
+      .filter((item) => draftFilter.dusunId === "all" || item.dusunId === draftFilter.dusunId)
+      .sort((a, b) => a.nomor.localeCompare(b.nomor));
+  }, [draftFilter.dusunId, wilayahOptions.rw]);
+
+  const rtOptions = useMemo(() => {
+    return wilayahOptions.rt
+      .map((item) => ({
+        id: item.id,
+        nomor: item.nomor,
+        rwId: item.rwId,
+        rwNomor: item.rw.nomor,
+      }))
+      .filter((item) => draftFilter.rwId === "all" || item.rwId === draftFilter.rwId)
+      .sort((a, b) => a.nomor.localeCompare(b.nomor));
+  }, [draftFilter.rwId, wilayahOptions.rt]);
 
   const columns = useMemo<ColumnDef<PendudukListItem>[]>(
     () => [
@@ -405,6 +484,79 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
               placeholder="Contoh: Guru, Petani"
               value={draftFilter.pekerjaan}
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Dusun</Label>
+            <Select
+              onValueChange={(value) =>
+                setDraftFilter((prev) => ({
+                  ...prev,
+                  dusunId: value,
+                  rwId: "all",
+                  rtId: "all",
+                }))
+              }
+              value={draftFilter.dusunId}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua</SelectItem>
+                {wilayahOptions.dusun.map((item) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    {item.nama}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>RW</Label>
+            <Select
+              onValueChange={(value) =>
+                setDraftFilter((prev) => ({
+                  ...prev,
+                  rwId: value,
+                  rtId: "all",
+                }))
+              }
+              value={draftFilter.rwId}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua</SelectItem>
+                {rwOptions.map((item) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    RW {item.nomor} ({item.dusunNama})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>RT</Label>
+            <Select
+              onValueChange={(value) => setDraftFilter((prev) => ({ ...prev, rtId: value }))}
+              value={draftFilter.rtId}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua</SelectItem>
+                {rtOptions.map((item) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    RT {item.nomor} (RW {item.rwNomor})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
