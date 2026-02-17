@@ -41,7 +41,7 @@ Artinya, kalau deploy gagal, biasanya masalah ada di:
 ### 1.2 Data yang harus kamu tahu
 1. IP/domain VPS (contoh `103.xx.xx.xx`).
 2. Username login VPS (contoh `faiz` atau `root`).
-3. Path project di VPS (nanti kita buat, contoh `/home/faiz/SIKD/sidesa`).
+3. Path project di VPS (nanti kita buat, contoh `/home/faiz/SIKD`).
 
 ---
 
@@ -95,7 +95,7 @@ Di VPS:
 ```bash
 cd ~
 git clone https://github.com/Faiz-abdurrachman/SIKD.git
-cd ~/SIKD/sidesa
+cd ~/SIKD
 ```
 
 Verifikasi file penting ada:
@@ -113,7 +113,7 @@ ls -la docker/docker-compose.yml
 Di VPS:
 
 ```bash
-cd ~/SIKD/sidesa
+cd ~/SIKD
 cp .env.example .env
 openssl rand -hex 32
 ```
@@ -151,7 +151,7 @@ Sebelum auto deploy GitHub, kamu wajib tes deploy manual.
 Di VPS:
 
 ```bash
-cd ~/SIKD/sidesa
+cd ~/SIKD
 bash scripts/deploy.sh
 ```
 
@@ -247,8 +247,8 @@ Isi 4 secret ini **dengan nama persis**:
    - Contoh: `faiz`
 
 3. `VPS_PROJECT_PATH`
-   - Isi: path folder project `sidesa` di VPS.
-   - Contoh: `/home/faiz/SIKD/sidesa`
+   - Isi: path root project di VPS.
+   - Contoh: `/home/faiz/SIKD`
 
 4. `VPS_SSH_KEY`
    - Isi: private key dari local:
@@ -270,14 +270,14 @@ Catatan:
 Setelah secret beres, dari local project kamu:
 
 ```bash
-cd /home/faiz/projek/terbaru/sidesa
+cd /path/ke/SIKD
 git commit --allow-empty -m "chore: trigger deploy"
 git push origin main
 ```
 
 Lalu cek GitHub:
 1. Masuk tab `Actions`
-2. Buka workflow `Deploy`
+2. Buka workflow `Deploy VPS (Manual)`
 3. Pantau job sampai status hijau.
 
 ---
@@ -318,7 +318,7 @@ Perbaikan:
 2. Cek path real:
 ```bash
 pwd
-ls -la /home/<VPS_USER>/SIKD/sidesa
+ls -la /home/<VPS_USER>/SIKD
 ```
 3. Update secret `VPS_PROJECT_PATH`.
 
@@ -361,7 +361,7 @@ docker compose -f docker/docker-compose.yml logs --tail=200 db
 Di VPS, masuk folder project dulu:
 
 ```bash
-cd ~/SIKD/sidesa
+cd ~/SIKD
 ```
 
 Lihat status container:
@@ -395,7 +395,7 @@ bash scripts/deploy.sh
 Di VPS:
 
 ```bash
-cd ~/SIKD/sidesa
+cd ~/SIKD
 git log --oneline -n 10
 ```
 
@@ -436,7 +436,7 @@ Kalau semua ini sudah oke, deploy kamu sudah benar.
 Pakai ini kalau kamu mau cek kondisi server dengan cepat:
 
 ```bash
-cd ~/SIKD/sidesa
+cd ~/SIKD
 echo "== USER ==" && whoami
 echo "== DOCKER ==" && docker --version
 echo "== COMPOSE ==" && docker compose version

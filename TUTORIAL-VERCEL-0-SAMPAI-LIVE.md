@@ -38,7 +38,7 @@ Pastikan:
 Di local:
 
 ```bash
-cd /home/faiz/projek/terbaru/sidesa
+cd /path/ke/SIKD
 git checkout main
 git pull origin main
 npm install
@@ -80,14 +80,14 @@ Migration wajib agar tabel di DB production dibuat sesuai schema Prisma.
 Di local, jalankan:
 
 ```bash
-cd /home/faiz/projek/terbaru/sidesa
+cd /path/ke/SIKD
 DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/DB?sslmode=require" npx prisma migrate deploy
 ```
 
 Jika kamu mau isi data awal (akun seed) di DB production:
 
 ```bash
-cd /home/faiz/projek/terbaru/sidesa
+cd /path/ke/SIKD
 DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/DB?sslmode=require" npx prisma db seed
 ```
 
@@ -107,7 +107,7 @@ Langkah di dashboard Vercel:
 3. Import repo `Faiz-abdurrachman/SIKD`.
 4. Saat konfigurasi project:
    - Framework: Next.js (auto detect)
-   - Root Directory: `sidesa`
+   - Root Directory: `./` (root repo `SIKD`)
    - Install Command: `npm install`
    - Build Command: `npm run vercel-build`
    - Output Directory: biarkan default
@@ -266,4 +266,3 @@ Checklist final:
 6. Bisa login dan buka modul utama tanpa error.
 
 Kalau semua checklist ini centang, berarti migrasi kamu ke Vercel sudah beres.
-

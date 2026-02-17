@@ -66,7 +66,7 @@ sudo systemctl enable --now postgresql
 
 ```bash
 git clone https://github.com/Faiz-abdurrachman/SIKD.git
-cd SIKD/sidesa
+cd SIKD
 ```
 
 ## 3. Setup Environment
@@ -209,7 +209,7 @@ DATABASE_URL="postgresql://..." npx prisma db seed
 ```
 
 5. Import repo ke Vercel.
-6. Set `Root Directory` ke `sidesa`.
+6. Set `Root Directory` ke `./` (root repo `SIKD`).
 7. Set Build Command ke:
 
 ```bash
