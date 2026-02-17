@@ -1,4 +1,4 @@
-import type { Agama, JenisKelamin, Prisma, StatusKependudukan, StatusPerkawinan } from "@prisma/client";
+import type { Agama, JenisKelamin, Pendidikan, Prisma, StatusKependudukan, StatusPerkawinan } from "@prisma/client";
 import { StatusKependudukan as StatusKependudukanEnum } from "@prisma/client";
 
 import { ERROR_CODES } from "@/lib/constants";
@@ -126,6 +126,10 @@ function buildListWhere(params: SearchPendudukInput): Prisma.PendudukWhereInput 
     ];
   }
 
+  if (params.nik?.trim()) {
+    where.nik = { contains: params.nik.trim(), mode: "insensitive" };
+  }
+
   if (params.jenisKelamin) {
     where.jenisKelamin = params.jenisKelamin as JenisKelamin;
   }
@@ -140,6 +144,14 @@ function buildListWhere(params: SearchPendudukInput): Prisma.PendudukWhereInput 
 
   if (params.statusKependudukan) {
     where.statusKependudukan = params.statusKependudukan as StatusKependudukan;
+  }
+
+  if (params.pendidikanTerakhir) {
+    where.pendidikanTerakhir = params.pendidikanTerakhir as Pendidikan;
+  }
+
+  if (params.pekerjaan?.trim()) {
+    where.pekerjaan = { contains: params.pekerjaan.trim(), mode: "insensitive" };
   }
 
   if (params.rtId || params.rwId || params.dusunId) {

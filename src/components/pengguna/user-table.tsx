@@ -28,6 +28,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ROLE_LABEL } from "@/lib/constants";
 import { formatTanggalIndonesia } from "@/lib/format";
@@ -59,10 +60,23 @@ const EMPTY_FORM: UserFormState = {
   isActive: true,
 };
 
+type UserFilter = {
+  q: string;
+  role: "all" | "SUPER_ADMIN" | "KEPALA_DESA" | "SEKRETARIS" | "OPERATOR";
+  isActive: "all" | "true" | "false";
+};
+
+const EMPTY_FILTER: UserFilter = {
+  q: "",
+  role: "all",
+  isActive: "all",
+};
+
 export function UserTable() {
   const [rows, setRows] = useState<UserListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const [draftFilter, setDraftFilter] = useState<UserFilter>(EMPTY_FILTER);
+  const [appliedFilter, setAppliedFilter] = useState<UserFilter>(EMPTY_FILTER);
   const [pagination, setPagination] = useState({
     page: 1,
     pageSize: 20,
@@ -95,7 +109,9 @@ export function UserTable() {
         page: pagination.page,
         limit: pagination.pageSize,
         query: {
-          q: search,
+          q: appliedFilter.q,
+          role: appliedFilter.role !== "all" ? appliedFilter.role : undefined,
+          isActive: appliedFilter.isActive !== "all" ? appliedFilter.isActive : undefined,
         },
       });
       setRows(result.data);
@@ -113,7 +129,7 @@ export function UserTable() {
     } finally {
       setIsLoading(false);
     }
-  }, [pagination.page, pagination.pageSize, search]);
+  }, [appliedFilter, pagination.page, pagination.pageSize]);
 
   useEffect(() => {
     void loadUsers();
@@ -388,19 +404,89 @@ export function UserTable() {
         <StatCard description="Super admin di halaman aktif" icon={ShieldCheck} title="Super Admin (Halaman)" value={stats.superAdmin} />
       </div>
 
+      <div className="rounded-lg border bg-white p-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="space-y-2 xl:col-span-2">
+            <Label>Kata Kunci</Label>
+            <Input
+              onChange={(event) => setDraftFilter((prev) => ({ ...prev, q: event.target.value }))}
+              placeholder="Cari username / nama / email"
+              value={draftFilter.q}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Role</Label>
+            <Select
+              onValueChange={(value) => setDraftFilter((prev) => ({ ...prev, role: value as UserFilter["role"] }))}
+              value={draftFilter.role}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua</SelectItem>
+                {Object.entries(ROLE_LABEL).map(([key, label]) => (
+                  <SelectItem key={key} value={key}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Status</Label>
+            <Select
+              onValueChange={(value) => setDraftFilter((prev) => ({ ...prev, isActive: value as UserFilter["isActive"] }))}
+              value={draftFilter.isActive}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua</SelectItem>
+                <SelectItem value="true">Aktif</SelectItem>
+                <SelectItem value="false">Nonaktif</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="mt-3 flex gap-2">
+          <Button
+            onClick={() => {
+              setAppliedFilter({ ...draftFilter });
+              setPagination((previous) => ({
+                ...previous,
+                page: 1,
+              }));
+            }}
+            type="button"
+          >
+            Terapkan Filter
+          </Button>
+          <Button
+            onClick={() => {
+              setDraftFilter({ ...EMPTY_FILTER });
+              setAppliedFilter({ ...EMPTY_FILTER });
+              setPagination((previous) => ({
+                ...previous,
+                page: 1,
+              }));
+            }}
+            type="button"
+            variant="outline"
+          >
+            Reset
+          </Button>
+        </div>
+      </div>
+
       <DataTable
         columns={columns}
         data={rows}
         isLoading={isLoading}
-        searchPlaceholder="Cari username..."
-        searchValue={search}
-        onSearchChange={(value) => {
-          setSearch(value);
-          setPagination((previous) => ({
-            ...previous,
-            page: 1,
-          }));
-        }}
         serverPagination={pagination}
         onServerPageChange={(page) => {
           setPagination((previous) => ({

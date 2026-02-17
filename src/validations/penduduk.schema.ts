@@ -51,12 +51,15 @@ export const updatePendudukSchema = createPendudukSchema.partial().omit({ nik: t
 
 export const searchPendudukSchema = z.object({
   q: z.string().optional(),
+  nik: z.string().optional(),
   jenisKelamin: z.enum(["LAKI_LAKI", "PEREMPUAN"]).optional(),
   agama: z
     .enum(["ISLAM", "KRISTEN", "KATOLIK", "HINDU", "BUDDHA", "KONGHUCU", "KEPERCAYAAN"])
     .optional(),
   statusPerkawinan: z.enum(["BELUM_KAWIN", "KAWIN", "CERAI_HIDUP", "CERAI_MATI"]).optional(),
   statusKependudukan: z.enum(["TETAP", "SEMENTARA", "PINDAH", "MENINGGAL"]).optional(),
+  pendidikanTerakhir: z.enum(["TIDAK_SEKOLAH", "SD", "SMP", "SMA", "D1", "D2", "D3", "S1", "S2", "S3"]).optional(),
+  pekerjaan: z.string().optional(),
   rtId: z.string().optional(),
   rwId: z.string().optional(),
   dusunId: z.string().optional(),

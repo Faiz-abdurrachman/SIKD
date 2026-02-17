@@ -81,6 +81,11 @@ type MutasiFormState = {
     | "LAINNYA";
 };
 
+type MutasiFilter = {
+  q: string;
+  jenisMutasi: "all" | "LAHIR" | "MATI" | "PINDAH_KELUAR" | "PINDAH_MASUK";
+};
+
 const EMPTY_FORM: MutasiFormState = {
   jenisMutasi: "MATI",
   tanggalMutasi: "",
@@ -106,10 +111,16 @@ const EMPTY_FORM: MutasiFormState = {
   statusHubungan: "ANAK",
 };
 
+const EMPTY_FILTER: MutasiFilter = {
+  q: "",
+  jenisMutasi: "all",
+};
+
 export function MutasiPage({ canCreate }: { canCreate: boolean }) {
   const [rows, setRows] = useState<MutasiListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const [draftFilter, setDraftFilter] = useState<MutasiFilter>(EMPTY_FILTER);
+  const [appliedFilter, setAppliedFilter] = useState<MutasiFilter>(EMPTY_FILTER);
   const [pagination, setPagination] = useState({
     page: 1,
     pageSize: 20,
@@ -136,7 +147,8 @@ export function MutasiPage({ canCreate }: { canCreate: boolean }) {
         page: pagination.page,
         limit: pagination.pageSize,
         query: {
-          q: search,
+          q: appliedFilter.q,
+          jenisMutasi: appliedFilter.jenisMutasi !== "all" ? appliedFilter.jenisMutasi : undefined,
         },
       });
       setRows(result.data);
@@ -154,7 +166,7 @@ export function MutasiPage({ canCreate }: { canCreate: boolean }) {
     } finally {
       setIsLoading(false);
     }
-  }, [pagination.page, pagination.pageSize, search]);
+  }, [appliedFilter, pagination.page, pagination.pageSize]);
 
   const loadOptions = useCallback(async () => {
     try {
@@ -366,19 +378,71 @@ export function MutasiPage({ canCreate }: { canCreate: boolean }) {
         <StatCard description="Mutasi pindah di halaman aktif" icon={RefreshCw} title="Pindah (Halaman)" value={stats.pindah} />
       </div>
 
+      <div className="rounded-lg border bg-white p-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="space-y-2 xl:col-span-3">
+            <Label>Kata Kunci</Label>
+            <Input
+              onChange={(event) => setDraftFilter((prev) => ({ ...prev, q: event.target.value }))}
+              placeholder="Cari NIK / nama penduduk / keterangan"
+              value={draftFilter.q}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Jenis Mutasi</Label>
+            <Select
+              onValueChange={(value) => setDraftFilter((prev) => ({ ...prev, jenisMutasi: value as MutasiFilter["jenisMutasi"] }))}
+              value={draftFilter.jenisMutasi}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua</SelectItem>
+                <SelectItem value="LAHIR">Lahir</SelectItem>
+                <SelectItem value="MATI">Mati</SelectItem>
+                <SelectItem value="PINDAH_KELUAR">Pindah Keluar</SelectItem>
+                <SelectItem value="PINDAH_MASUK">Pindah Masuk</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="mt-3 flex gap-2">
+          <Button
+            onClick={() => {
+              setAppliedFilter({ ...draftFilter });
+              setPagination((previous) => ({
+                ...previous,
+                page: 1,
+              }));
+            }}
+            type="button"
+          >
+            Terapkan Filter
+          </Button>
+          <Button
+            onClick={() => {
+              setDraftFilter({ ...EMPTY_FILTER });
+              setAppliedFilter({ ...EMPTY_FILTER });
+              setPagination((previous) => ({
+                ...previous,
+                page: 1,
+              }));
+            }}
+            type="button"
+            variant="outline"
+          >
+            Reset
+          </Button>
+        </div>
+      </div>
+
       <DataTable
         columns={columns}
         data={rows}
         isLoading={isLoading}
-        searchPlaceholder="Cari catatan mutasi..."
-        searchValue={search}
-        onSearchChange={(value) => {
-          setSearch(value);
-          setPagination((previous) => ({
-            ...previous,
-            page: 1,
-          }));
-        }}
         serverPagination={pagination}
         onServerPageChange={(page) => {
           setPagination((previous) => ({

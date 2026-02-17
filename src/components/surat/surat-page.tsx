@@ -68,12 +68,28 @@ type SuratFormState = {
   keterangan: string;
 };
 
+type SuratFilter = {
+  q: string;
+  jenisSurat: "all" | SuratJenis;
+  status: "all" | "DRAFT" | "MENUNGGU_PERSETUJUAN" | "DISETUJUI" | "DITOLAK" | "DICETAK" | "SELESAI";
+  fromDate: string;
+  toDate: string;
+};
+
 type SuratPageProps = {
   canCreate: boolean;
   canUpdate: boolean;
   canDelete: boolean;
   canApprove: boolean;
   canPrint: boolean;
+};
+
+const EMPTY_FILTER: SuratFilter = {
+  q: "",
+  jenisSurat: "all",
+  status: "all",
+  fromDate: "",
+  toDate: "",
 };
 
 function createInitialForm(jenisSurat: SuratJenis = "SK_DOMISILI"): SuratFormState {
@@ -127,7 +143,8 @@ async function parseErrorResponse(response: Response) {
 export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrint }: SuratPageProps) {
   const [rows, setRows] = useState<SuratListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const [draftFilter, setDraftFilter] = useState<SuratFilter>(EMPTY_FILTER);
+  const [appliedFilter, setAppliedFilter] = useState<SuratFilter>(EMPTY_FILTER);
   const [pagination, setPagination] = useState({
     page: 1,
     pageSize: 20,
@@ -160,7 +177,11 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
         page: pagination.page,
         limit: pagination.pageSize,
         query: {
-          q: search,
+          q: appliedFilter.q,
+          jenisSurat: appliedFilter.jenisSurat !== "all" ? appliedFilter.jenisSurat : undefined,
+          status: appliedFilter.status !== "all" ? appliedFilter.status : undefined,
+          fromDate: appliedFilter.fromDate,
+          toDate: appliedFilter.toDate,
         },
       });
       setRows(result.data);
@@ -178,7 +199,7 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
     } finally {
       setIsLoading(false);
     }
-  }, [pagination.page, pagination.pageSize, search]);
+  }, [appliedFilter, pagination.page, pagination.pageSize]);
 
   const loadPendudukOptions = useCallback(async () => {
     try {
@@ -694,19 +715,111 @@ export function SuratPage({ canCreate, canUpdate, canDelete, canApprove, canPrin
         <StatCard description="Surat selesai di halaman aktif" icon={CheckCircle2} title="Selesai (Halaman)" value={stats.selesai} />
       </div>
 
+      <div className="rounded-lg border bg-white p-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <div className="space-y-2 xl:col-span-2">
+            <Label>Kata Kunci</Label>
+            <Input
+              onChange={(event) => setDraftFilter((prev) => ({ ...prev, q: event.target.value }))}
+              placeholder="Cari No surat / perihal / NIK / nama"
+              value={draftFilter.q}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Jenis Surat</Label>
+            <Select
+              onValueChange={(value) => setDraftFilter((prev) => ({ ...prev, jenisSurat: value as SuratFilter["jenisSurat"] }))}
+              value={draftFilter.jenisSurat}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua</SelectItem>
+                {SURAT_JENIS_OPTIONS.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Status</Label>
+            <Select
+              onValueChange={(value) => setDraftFilter((prev) => ({ ...prev, status: value as SuratFilter["status"] }))}
+              value={draftFilter.status}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua</SelectItem>
+                <SelectItem value="DRAFT">Draft</SelectItem>
+                <SelectItem value="MENUNGGU_PERSETUJUAN">Menunggu Persetujuan</SelectItem>
+                <SelectItem value="DISETUJUI">Disetujui</SelectItem>
+                <SelectItem value="DITOLAK">Ditolak</SelectItem>
+                <SelectItem value="DICETAK">Dicetak</SelectItem>
+                <SelectItem value="SELESAI">Selesai</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Dari Tanggal</Label>
+            <Input
+              onChange={(event) => setDraftFilter((prev) => ({ ...prev, fromDate: event.target.value }))}
+              type="date"
+              value={draftFilter.fromDate}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Sampai Tanggal</Label>
+            <Input
+              onChange={(event) => setDraftFilter((prev) => ({ ...prev, toDate: event.target.value }))}
+              type="date"
+              value={draftFilter.toDate}
+            />
+          </div>
+        </div>
+
+        <div className="mt-3 flex gap-2">
+          <Button
+            onClick={() => {
+              setAppliedFilter({ ...draftFilter });
+              setPagination((previous) => ({
+                ...previous,
+                page: 1,
+              }));
+            }}
+            type="button"
+          >
+            Terapkan Filter
+          </Button>
+          <Button
+            onClick={() => {
+              setDraftFilter({ ...EMPTY_FILTER });
+              setAppliedFilter({ ...EMPTY_FILTER });
+              setPagination((previous) => ({
+                ...previous,
+                page: 1,
+              }));
+            }}
+            type="button"
+            variant="outline"
+          >
+            Reset
+          </Button>
+        </div>
+      </div>
+
       <DataTable
         columns={columns}
         data={rows}
         isLoading={isLoading}
-        searchPlaceholder="Cari perihal surat..."
-        searchValue={search}
-        onSearchChange={(value) => {
-          setSearch(value);
-          setPagination((previous) => ({
-            ...previous,
-            page: 1,
-          }));
-        }}
         serverPagination={pagination}
         onServerPageChange={(page) => {
           setPagination((previous) => ({

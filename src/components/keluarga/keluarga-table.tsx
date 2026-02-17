@@ -12,6 +12,9 @@ import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/shared/stat-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { fetchPaginatedPage } from "@/lib/paginated-client-fetch";
 import type { KeluargaListItem } from "@/types/keluarga.types";
 
@@ -28,11 +31,26 @@ type KeluargaTableProps = {
   canDelete: boolean;
 };
 
+type KeluargaFilter = {
+  q: string;
+  dusunId: string;
+  rwId: string;
+  rtId: string;
+};
+
+const EMPTY_FILTER: KeluargaFilter = {
+  q: "",
+  dusunId: "all",
+  rwId: "all",
+  rtId: "all",
+};
+
 export function KeluargaTable({ canCreate, canUpdate, canDelete }: KeluargaTableProps) {
   const [rows, setRows] = useState<KeluargaListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<KeluargaListItem | null>(null);
-  const [search, setSearch] = useState("");
+  const [draftFilter, setDraftFilter] = useState<KeluargaFilter>(EMPTY_FILTER);
+  const [appliedFilter, setAppliedFilter] = useState<KeluargaFilter>(EMPTY_FILTER);
   const [pagination, setPagination] = useState({
     page: 1,
     pageSize: 20,
@@ -52,7 +70,10 @@ export function KeluargaTable({ canCreate, canUpdate, canDelete }: KeluargaTable
         page: pagination.page,
         limit: pagination.pageSize,
         query: {
-          q: search,
+          q: appliedFilter.q,
+          dusunId: appliedFilter.dusunId !== "all" ? appliedFilter.dusunId : undefined,
+          rwId: appliedFilter.rwId !== "all" ? appliedFilter.rwId : undefined,
+          rtId: appliedFilter.rtId !== "all" ? appliedFilter.rtId : undefined,
         },
       });
       setRows(result.data);
@@ -70,7 +91,7 @@ export function KeluargaTable({ canCreate, canUpdate, canDelete }: KeluargaTable
     } finally {
       setIsLoading(false);
     }
-  }, [pagination.page, pagination.pageSize, search]);
+  }, [appliedFilter, pagination.page, pagination.pageSize]);
 
   useEffect(() => {
     void loadKeluarga();
@@ -116,6 +137,50 @@ export function KeluargaTable({ canCreate, canUpdate, canDelete }: KeluargaTable
       tanpaKepala: totalTanpaKepala,
     };
   }, [pagination.total, rows]);
+
+  const dusunOptions = useMemo(() => {
+    return Array.from(
+      new Map(
+        rows.map((item) => [item.rt.rw.dusun.id, { id: item.rt.rw.dusun.id, nama: item.rt.rw.dusun.nama }]),
+      ).values(),
+    ).sort((a, b) => a.nama.localeCompare(b.nama));
+  }, [rows]);
+
+  const rwOptions = useMemo(() => {
+    return Array.from(
+      new Map(
+        rows.map((item) => [
+          item.rt.rw.id,
+          {
+            id: item.rt.rw.id,
+            nomor: item.rt.rw.nomor,
+            dusunId: item.rt.rw.dusun.id,
+            dusunNama: item.rt.rw.dusun.nama,
+          },
+        ]),
+      ).values(),
+    )
+      .filter((item) => draftFilter.dusunId === "all" || item.dusunId === draftFilter.dusunId)
+      .sort((a, b) => a.nomor.localeCompare(b.nomor));
+  }, [draftFilter.dusunId, rows]);
+
+  const rtOptions = useMemo(() => {
+    return Array.from(
+      new Map(
+        rows.map((item) => [
+          item.rt.id,
+          {
+            id: item.rt.id,
+            nomor: item.rt.nomor,
+            rwId: item.rt.rw.id,
+            rwNomor: item.rt.rw.nomor,
+          },
+        ]),
+      ).values(),
+    )
+      .filter((item) => draftFilter.rwId === "all" || item.rwId === draftFilter.rwId)
+      .sort((a, b) => a.nomor.localeCompare(b.nomor));
+  }, [draftFilter.rwId, rows]);
 
   const columns = useMemo<ColumnDef<KeluargaListItem>[]>(
     () => [
@@ -228,19 +293,125 @@ export function KeluargaTable({ canCreate, canUpdate, canDelete }: KeluargaTable
         <StatCard description="KK tanpa kepala keluarga di halaman aktif" icon={UserRound} title="Tanpa Kepala (Halaman)" value={stats.tanpaKepala} />
       </div>
 
+      <div className="rounded-lg border bg-white p-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="space-y-2">
+            <Label>Kata Kunci</Label>
+            <Input
+              onChange={(event) => setDraftFilter((prev) => ({ ...prev, q: event.target.value }))}
+              placeholder="Cari No KK / kepala keluarga / alamat"
+              value={draftFilter.q}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Dusun</Label>
+            <Select
+              onValueChange={(value) =>
+                setDraftFilter((prev) => ({
+                  ...prev,
+                  dusunId: value,
+                  rwId: "all",
+                  rtId: "all",
+                }))
+              }
+              value={draftFilter.dusunId}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua</SelectItem>
+                {dusunOptions.map((item) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    {item.nama}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>RW</Label>
+            <Select
+              onValueChange={(value) =>
+                setDraftFilter((prev) => ({
+                  ...prev,
+                  rwId: value,
+                  rtId: "all",
+                }))
+              }
+              value={draftFilter.rwId}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua</SelectItem>
+                {rwOptions.map((item) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    RW {item.nomor} ({item.dusunNama})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>RT</Label>
+            <Select
+              onValueChange={(value) => setDraftFilter((prev) => ({ ...prev, rtId: value }))}
+              value={draftFilter.rtId}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua</SelectItem>
+                {rtOptions.map((item) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    RT {item.nomor} (RW {item.rwNomor})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="mt-3 flex gap-2">
+          <Button
+            onClick={() => {
+              setAppliedFilter({ ...draftFilter });
+              setPagination((previous) => ({
+                ...previous,
+                page: 1,
+              }));
+            }}
+            type="button"
+          >
+            Terapkan Filter
+          </Button>
+          <Button
+            onClick={() => {
+              setDraftFilter({ ...EMPTY_FILTER });
+              setAppliedFilter({ ...EMPTY_FILTER });
+              setPagination((previous) => ({
+                ...previous,
+                page: 1,
+              }));
+            }}
+            type="button"
+            variant="outline"
+          >
+            Reset
+          </Button>
+        </div>
+      </div>
+
       <DataTable
         columns={columns}
         data={rows}
         isLoading={isLoading}
-        searchPlaceholder="Cari nomor KK..."
-        searchValue={search}
-        onSearchChange={(value) => {
-          setSearch(value);
-          setPagination((previous) => ({
-            ...previous,
-            page: 1,
-          }));
-        }}
         serverPagination={pagination}
         onServerPageChange={(page) => {
           setPagination((previous) => ({

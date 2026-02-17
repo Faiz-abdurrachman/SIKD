@@ -13,6 +13,9 @@ import { StatCard } from "@/components/shared/stat-card";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { LABEL_MAP } from "@/lib/constants";
 import { formatTanggalIndonesia } from "@/lib/format";
 import { fetchPaginatedPage } from "@/lib/paginated-client-fetch";
@@ -31,11 +34,34 @@ type PendudukTableProps = {
   canDelete: boolean;
 };
 
+type PendudukFilter = {
+  q: string;
+  nik: string;
+  jenisKelamin: "all" | "LAKI_LAKI" | "PEREMPUAN";
+  agama: "all" | "ISLAM" | "KRISTEN" | "KATOLIK" | "HINDU" | "BUDDHA" | "KONGHUCU" | "KEPERCAYAAN";
+  statusPerkawinan: "all" | "BELUM_KAWIN" | "KAWIN" | "CERAI_HIDUP" | "CERAI_MATI";
+  statusKependudukan: "all" | "TETAP" | "SEMENTARA" | "PINDAH" | "MENINGGAL";
+  pendidikanTerakhir: "all" | "TIDAK_SEKOLAH" | "SD" | "SMP" | "SMA" | "D1" | "D2" | "D3" | "S1" | "S2" | "S3";
+  pekerjaan: string;
+};
+
+const EMPTY_FILTER: PendudukFilter = {
+  q: "",
+  nik: "",
+  jenisKelamin: "all",
+  agama: "all",
+  statusPerkawinan: "all",
+  statusKependudukan: "all",
+  pendidikanTerakhir: "all",
+  pekerjaan: "",
+};
+
 export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTableProps) {
   const [rows, setRows] = useState<PendudukListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<PendudukListItem | null>(null);
-  const [search, setSearch] = useState("");
+  const [draftFilter, setDraftFilter] = useState<PendudukFilter>(EMPTY_FILTER);
+  const [appliedFilter, setAppliedFilter] = useState<PendudukFilter>(EMPTY_FILTER);
   const [pagination, setPagination] = useState({
     page: 1,
     pageSize: 20,
@@ -55,7 +81,16 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
         page: pagination.page,
         limit: pagination.pageSize,
         query: {
-          q: search,
+          q: appliedFilter.q,
+          nik: appliedFilter.nik,
+          jenisKelamin: appliedFilter.jenisKelamin !== "all" ? appliedFilter.jenisKelamin : undefined,
+          agama: appliedFilter.agama !== "all" ? appliedFilter.agama : undefined,
+          statusPerkawinan: appliedFilter.statusPerkawinan !== "all" ? appliedFilter.statusPerkawinan : undefined,
+          statusKependudukan:
+            appliedFilter.statusKependudukan !== "all" ? appliedFilter.statusKependudukan : undefined,
+          pendidikanTerakhir:
+            appliedFilter.pendidikanTerakhir !== "all" ? appliedFilter.pendidikanTerakhir : undefined,
+          pekerjaan: appliedFilter.pekerjaan,
         },
       });
       setRows(result.data);
@@ -73,7 +108,7 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
     } finally {
       setIsLoading(false);
     }
-  }, [pagination.page, pagination.pageSize, search]);
+  }, [appliedFilter, pagination.page, pagination.pageSize]);
 
   useEffect(() => {
     void loadPenduduk();
@@ -235,19 +270,178 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
         <StatCard description="Status bukan tetap di halaman aktif" icon={UserMinus} title="Non Aktif (Halaman)" value={stats.nonAktifPage} />
       </div>
 
+      <div className="rounded-lg border bg-white p-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="space-y-2">
+            <Label>Kata Kunci</Label>
+            <Input
+              onChange={(event) => setDraftFilter((prev) => ({ ...prev, q: event.target.value }))}
+              placeholder="Cari NIK / nama penduduk"
+              value={draftFilter.q}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>NIK (Spesifik)</Label>
+            <Input
+              onChange={(event) => setDraftFilter((prev) => ({ ...prev, nik: event.target.value }))}
+              placeholder="Contoh: 3276xxxxxxxxxxxx"
+              value={draftFilter.nik}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Jenis Kelamin</Label>
+            <Select
+              onValueChange={(value) => setDraftFilter((prev) => ({ ...prev, jenisKelamin: value as PendudukFilter["jenisKelamin"] }))}
+              value={draftFilter.jenisKelamin}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua</SelectItem>
+                {Object.entries(LABEL_MAP.jenisKelamin).map(([key, label]) => (
+                  <SelectItem key={key} value={key}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Agama</Label>
+            <Select
+              onValueChange={(value) => setDraftFilter((prev) => ({ ...prev, agama: value as PendudukFilter["agama"] }))}
+              value={draftFilter.agama}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua</SelectItem>
+                {Object.entries(LABEL_MAP.agama).map(([key, label]) => (
+                  <SelectItem key={key} value={key}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Status Perkawinan</Label>
+            <Select
+              onValueChange={(value) =>
+                setDraftFilter((prev) => ({ ...prev, statusPerkawinan: value as PendudukFilter["statusPerkawinan"] }))
+              }
+              value={draftFilter.statusPerkawinan}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua</SelectItem>
+                {Object.entries(LABEL_MAP.statusPerkawinan).map(([key, label]) => (
+                  <SelectItem key={key} value={key}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Status Kependudukan</Label>
+            <Select
+              onValueChange={(value) =>
+                setDraftFilter((prev) => ({
+                  ...prev,
+                  statusKependudukan: value as PendudukFilter["statusKependudukan"],
+                }))
+              }
+              value={draftFilter.statusKependudukan}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua</SelectItem>
+                <SelectItem value="TETAP">Tetap</SelectItem>
+                <SelectItem value="SEMENTARA">Sementara</SelectItem>
+                <SelectItem value="PINDAH">Pindah</SelectItem>
+                <SelectItem value="MENINGGAL">Meninggal</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Pendidikan Terakhir</Label>
+            <Select
+              onValueChange={(value) =>
+                setDraftFilter((prev) => ({ ...prev, pendidikanTerakhir: value as PendudukFilter["pendidikanTerakhir"] }))
+              }
+              value={draftFilter.pendidikanTerakhir}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua</SelectItem>
+                {Object.entries(LABEL_MAP.pendidikan).map(([key, label]) => (
+                  <SelectItem key={key} value={key}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Pekerjaan</Label>
+            <Input
+              onChange={(event) => setDraftFilter((prev) => ({ ...prev, pekerjaan: event.target.value }))}
+              placeholder="Contoh: Guru, Petani"
+              value={draftFilter.pekerjaan}
+            />
+          </div>
+        </div>
+
+        <div className="mt-3 flex gap-2">
+          <Button
+            onClick={() => {
+              setAppliedFilter({ ...draftFilter });
+              setPagination((previous) => ({
+                ...previous,
+                page: 1,
+              }));
+            }}
+            type="button"
+          >
+            Terapkan Filter
+          </Button>
+          <Button
+            onClick={() => {
+              setDraftFilter({ ...EMPTY_FILTER });
+              setAppliedFilter({ ...EMPTY_FILTER });
+              setPagination((previous) => ({
+                ...previous,
+                page: 1,
+              }));
+            }}
+            type="button"
+            variant="outline"
+          >
+            Reset
+          </Button>
+        </div>
+      </div>
+
       <DataTable
         columns={columns}
         data={rows}
         isLoading={isLoading}
-        searchPlaceholder="Cari nama penduduk..."
-        searchValue={search}
-        onSearchChange={(value) => {
-          setSearch(value);
-          setPagination((previous) => ({
-            ...previous,
-            page: 1,
-          }));
-        }}
         serverPagination={pagination}
         onServerPageChange={(page) => {
           setPagination((previous) => ({
