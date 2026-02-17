@@ -140,6 +140,7 @@ function getReportRows(summary: LaporanSummary, tab: ReportTab) {
 export function LaporanPage() {
   const [activeTab, setActiveTab] = useState<ReportTab>("penduduk");
   const [period, setPeriod] = useState(defaultPeriod());
+  const [appliedPeriod, setAppliedPeriod] = useState(defaultPeriod());
   const [isLoading, setIsLoading] = useState(true);
   const [summary, setSummary] = useState<LaporanSummary | null>(null);
 
@@ -148,8 +149,8 @@ export function LaporanPage() {
 
     try {
       const params = new URLSearchParams({
-        fromDate: period.fromDate,
-        toDate: period.toDate,
+        fromDate: appliedPeriod.fromDate,
+        toDate: appliedPeriod.toDate,
       });
 
       const response = await fetch(`/api/v1/laporan/summary?${params.toString()}`, {
@@ -171,11 +172,23 @@ export function LaporanPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [period.fromDate, period.toDate]);
+  }, [appliedPeriod.fromDate, appliedPeriod.toDate]);
 
   useEffect(() => {
     void loadSummary();
   }, [loadSummary]);
+
+  const handleApplyPeriod = useCallback(() => {
+    const isSamePeriod =
+      appliedPeriod.fromDate === period.fromDate && appliedPeriod.toDate === period.toDate;
+
+    if (isSamePeriod) {
+      void loadSummary();
+      return;
+    }
+
+    setAppliedPeriod({ ...period });
+  }, [appliedPeriod.fromDate, appliedPeriod.toDate, loadSummary, period]);
 
   const periodeLabel = useMemo(() => {
     if (!summary) {
@@ -260,7 +273,7 @@ export function LaporanPage() {
               value={period.toDate}
             />
           </div>
-          <Button onClick={() => void loadSummary()} type="button">
+          <Button onClick={handleApplyPeriod} type="button">
             <Filter className="mr-2 h-4 w-4" />
             Terapkan
           </Button>

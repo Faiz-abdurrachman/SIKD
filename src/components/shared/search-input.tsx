@@ -1,7 +1,7 @@
 "use client";
 
 import { Search, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,18 +23,27 @@ export function SearchInput({
   className,
 }: SearchInputProps) {
   const [localValue, setLocalValue] = useState(value);
+  const onChangeRef = useRef(onChange);
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
 
   useEffect(() => {
     setLocalValue(value);
   }, [value]);
 
   useEffect(() => {
+    if (localValue === value) {
+      return;
+    }
+
     const timer = window.setTimeout(() => {
-      onChange(localValue);
+      onChangeRef.current(localValue);
     }, delay);
 
     return () => window.clearTimeout(timer);
-  }, [delay, localValue, onChange]);
+  }, [delay, localValue, value]);
 
   return (
     <div className={cn("relative", className)}>

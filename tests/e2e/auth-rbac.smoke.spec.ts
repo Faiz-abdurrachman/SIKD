@@ -185,3 +185,14 @@ test("Super admin membuka modul utama tanpa error parameter pencarian", async ({
 
   expect(errors, `Console error yang terdeteksi: ${errors.join(" | ")}`).toEqual([]);
 });
+
+test("Pagination server tidak reset ke halaman 1 saat pindah ke halaman berikutnya", async ({ page }) => {
+  await login(page, CREDENTIALS.admin);
+  await page.goto("/penduduk");
+
+  const paginationInfo = page.getByText(/Menampilkan\s+\d+-\d+\s+dari\s+\d+\s+data/);
+  await expect(paginationInfo).toContainText("1-20");
+
+  await page.getByRole("button", { name: "Halaman berikutnya" }).click();
+  await expect(paginationInfo).toContainText("21-40");
+});

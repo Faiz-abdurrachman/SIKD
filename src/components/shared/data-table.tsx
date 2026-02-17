@@ -119,7 +119,13 @@ export function DataTable<TData, TValue>({
     <div className="space-y-3">
       {isServerMode && onSearchChange ? (
         <SearchInput
-          onChange={onSearchChange}
+          onChange={(value) => {
+            if (value === searchValue) {
+              return;
+            }
+
+            onSearchChange(value);
+          }}
           placeholder={searchPlaceholder}
           value={searchValue}
         />
@@ -225,6 +231,7 @@ export function DataTable<TData, TValue>({
           </Select>
 
           <Button
+            aria-label="Halaman sebelumnya"
             disabled={isServerMode ? pageIndex <= 0 : !table.getCanPreviousPage()}
             onClick={() => {
               if (isServerMode) {
@@ -240,6 +247,7 @@ export function DataTable<TData, TValue>({
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <Button
+            aria-label="Halaman berikutnya"
             disabled={isServerMode ? pageIndex + 1 >= pageCount : !table.getCanNextPage()}
             onClick={() => {
               if (isServerMode) {
