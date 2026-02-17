@@ -11,6 +11,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate required deploy secrets
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_PROJECT_PATH: ${{ secrets.VPS_PROJECT_PATH }}
+        run: |
+          set -e
+          missing=0
+          for name in VPS_HOST VPS_USER VPS_SSH_KEY VPS_PROJECT_PATH; do
+            if [ -z "${!name}" ]; then
+              echo "::error title=Missing secret::${name} is empty. Set it in Settings > Secrets and variables > Actions."
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
