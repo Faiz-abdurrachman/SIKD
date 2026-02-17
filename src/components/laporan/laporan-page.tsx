@@ -1,7 +1,7 @@
 "use client";
 
 import { FileText, FileSpreadsheet } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -138,14 +138,19 @@ function getReportRows(summary: LaporanSummary, tab: ReportTab) {
   };
 }
 
-export function LaporanPage() {
+type LaporanPageProps = {
+  initialSummary?: LaporanSummary | null;
+};
+
+export function LaporanPage({ initialSummary }: LaporanPageProps) {
   const [activeTab, setActiveTab] = useState<ReportTab>("penduduk");
   const [defaultRange] = useState(() => defaultPeriod());
   const [period, setPeriod] = useState(() => ({ ...defaultRange }));
   const [appliedPeriod, setAppliedPeriod] = useState(() => ({ ...defaultRange }));
   const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [summary, setSummary] = useState<LaporanSummary | null>(null);
+  const [isLoading, setIsLoading] = useState(!initialSummary);
+  const [summary, setSummary] = useState<LaporanSummary | null>(() => initialSummary ?? null);
+  const shouldSkipInitialLoadRef = useRef(Boolean(initialSummary));
 
   const loadSummary = useCallback(async () => {
     setIsLoading(true);
@@ -178,6 +183,11 @@ export function LaporanPage() {
   }, [appliedPeriod.fromDate, appliedPeriod.toDate]);
 
   useEffect(() => {
+    if (shouldSkipInitialLoadRef.current) {
+      shouldSkipInitialLoadRef.current = false;
+      return;
+    }
+
     void loadSummary();
   }, [loadSummary]);
 

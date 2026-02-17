@@ -5,6 +5,7 @@ import { KeluargaTable } from "@/components/keluarga/keluarga-table";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { auth } from "@/lib/auth";
 import { canAccess } from "@/lib/rbac";
+import { keluargaService } from "@/services/keluarga.service";
 
 export default async function KeluargaPage() {
   const session = await auth();
@@ -23,10 +24,34 @@ export default async function KeluargaPage() {
     );
   }
 
+  let initialData = null;
+
+  try {
+    const result = await keluargaService.list({
+      page: 1,
+      limit: 20,
+      sortBy: "noKK",
+      sortOrder: "asc",
+    });
+
+    initialData = {
+      rows: result.data,
+      pagination: {
+        page: result.page,
+        pageSize: result.limit,
+        total: result.total,
+        totalPages: result.totalPages,
+      },
+    };
+  } catch (error) {
+    console.error("[KeluargaPage.initialData]", error);
+  }
+
   return (
     <KeluargaTable
       canCreate={canAccess(session.user.role, "keluarga", "create")}
       canDelete={canAccess(session.user.role, "keluarga", "delete")}
+      initialData={initialData}
       canUpdate={canAccess(session.user.role, "keluarga", "update")}
     />
   );

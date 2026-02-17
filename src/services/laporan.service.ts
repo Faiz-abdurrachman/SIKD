@@ -42,7 +42,7 @@ export const laporanService = {
   async getSummary(input: LaporanSummaryInput) {
     const { fromDate, toDate } = toDateRange(input);
 
-    const [penduduk, keluargaDusun, mutasi, surat] = await prisma.$transaction([
+    const [penduduk, keluargaDusun, mutasi, surat] = await Promise.all([
       prisma.penduduk.findMany({
         select: {
           agama: true,

@@ -40,17 +40,6 @@ function getAge(dateOfBirth: Date) {
   return Math.max(age, 0);
 }
 
-function incrementCounter(counter: Map<string, number>, key: string) {
-  const label = key.trim();
-  counter.set(label, (counter.get(label) ?? 0) + 1);
-}
-
-function mapToSortedArray(counter: Map<string, number>) {
-  return Array.from(counter.entries())
-    .map(([label, value]) => ({ label, value }))
-    .sort((a, b) => b.value - a.value);
-}
-
 function initUmurBuckets() {
   return AGE_GROUPS.map((group) => ({
     label: group.label,
@@ -72,22 +61,25 @@ function findAgeGroupIndex(age: number) {
 
 export const dashboardService = {
   async getStats() {
-    const [totalPenduduk, totalKeluarga, suratBulanIni, mutasiBulanIni] = await prisma.$transaction([
+    const currentMonthStart = startOfCurrentMonth();
+    const nextMonthStart = startOfNextMonth();
+
+    const [totalPenduduk, totalKeluarga, suratBulanIni, mutasiBulanIni] = await Promise.all([
       prisma.penduduk.count(),
       prisma.keluarga.count(),
       prisma.surat.count({
         where: {
           tanggalSurat: {
-            gte: startOfCurrentMonth(),
-            lt: startOfNextMonth(),
+            gte: currentMonthStart,
+            lt: nextMonthStart,
           },
         },
       }),
       prisma.mutasi.count({
         where: {
           tanggalMutasi: {
-            gte: startOfCurrentMonth(),
-            lt: startOfNextMonth(),
+            gte: currentMonthStart,
+            lt: nextMonthStart,
           },
         },
       }),
@@ -102,25 +94,54 @@ export const dashboardService = {
   },
 
   async getDemografi() {
-    const penduduk = await prisma.penduduk.findMany({
-      select: {
-        agama: true,
-        pendidikanTerakhir: true,
-        jenisKelamin: true,
-        tanggalLahir: true,
-      },
-    });
+    const [agamaGroup, pendidikanGroup, genderGroup, pendudukByUmur] = await Promise.all([
+      prisma.penduduk.groupBy({
+        by: ["agama"],
+        _count: {
+          _all: true,
+        },
+      }),
+      prisma.penduduk.groupBy({
+        by: ["pendidikanTerakhir"],
+        _count: {
+          _all: true,
+        },
+      }),
+      prisma.penduduk.groupBy({
+        by: ["jenisKelamin"],
+        _count: {
+          _all: true,
+        },
+      }),
+      prisma.penduduk.findMany({
+        select: {
+          jenisKelamin: true,
+          tanggalLahir: true,
+        },
+      }),
+    ]);
 
     const umurBuckets = initUmurBuckets();
-    const agamaCounter = new Map<string, number>();
-    const pendidikanCounter = new Map<string, number>();
-    const genderCounter = new Map<string, number>();
+    const agama = agamaGroup
+      .map((item) => ({
+        label: formatEnumLabel(item.agama),
+        value: item._count._all,
+      }))
+      .sort((a, b) => b.value - a.value);
+    const pendidikan = pendidikanGroup
+      .map((item) => ({
+        label: formatEnumLabel(item.pendidikanTerakhir),
+        value: item._count._all,
+      }))
+      .sort((a, b) => b.value - a.value);
+    const gender = genderGroup
+      .map((item) => ({
+        label: formatEnumLabel(item.jenisKelamin),
+        value: item._count._all,
+      }))
+      .sort((a, b) => b.value - a.value);
 
-    for (const item of penduduk) {
-      incrementCounter(agamaCounter, formatEnumLabel(item.agama));
-      incrementCounter(pendidikanCounter, formatEnumLabel(item.pendidikanTerakhir));
-      incrementCounter(genderCounter, formatEnumLabel(item.jenisKelamin));
-
+    for (const item of pendudukByUmur) {
       const age = getAge(item.tanggalLahir);
       const groupIndex = findAgeGroupIndex(age);
 
@@ -138,9 +159,9 @@ export const dashboardService = {
     }
 
     return {
-      agama: mapToSortedArray(agamaCounter),
-      pendidikan: mapToSortedArray(pendidikanCounter),
-      gender: mapToSortedArray(genderCounter),
+      agama,
+      pendidikan,
+      gender,
       umur: umurBuckets,
     };
   },

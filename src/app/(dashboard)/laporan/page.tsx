@@ -5,6 +5,7 @@ import { LaporanPage as LaporanPageContent } from "@/components/laporan/laporan-
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { auth } from "@/lib/auth";
 import { canAccess } from "@/lib/rbac";
+import { laporanService } from "@/services/laporan.service";
 
 export default async function LaporanPage() {
   const session = await auth();
@@ -23,5 +24,13 @@ export default async function LaporanPage() {
     );
   }
 
-  return <LaporanPageContent />;
+  let initialSummary = null;
+
+  try {
+    initialSummary = await laporanService.getSummary({});
+  } catch (error) {
+    console.error("[LaporanPage.initialSummary]", error);
+  }
+
+  return <LaporanPageContent initialSummary={initialSummary} />;
 }

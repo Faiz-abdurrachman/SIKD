@@ -5,6 +5,7 @@ import { DashboardOverview } from "@/components/dashboard/dashboard-overview";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { auth } from "@/lib/auth";
 import { canAccess } from "@/lib/rbac";
+import { dashboardService } from "@/services/dashboard.service";
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -24,6 +25,13 @@ export default async function DashboardPage() {
   }
 
   const namaUser = session?.user?.nama ?? session?.user?.name ?? "Pengguna";
+  let initialData = null;
 
-  return <DashboardOverview namaUser={namaUser} />;
+  try {
+    initialData = await dashboardService.getOverview(5);
+  } catch (error) {
+    console.error("[DashboardPage.initialData]", error);
+  }
+
+  return <DashboardOverview initialData={initialData} namaUser={namaUser} />;
 }

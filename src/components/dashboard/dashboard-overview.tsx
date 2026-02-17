@@ -1,7 +1,7 @@
 "use client";
 
 import { FileText, Home, RefreshCw, Users } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -54,12 +54,18 @@ const DEFAULT_DEMOGRAFI: DashboardDemografi = {
 
 const COLORS = ["#1d4ed8", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#f97316", "#14b8a6"];
 
-export function DashboardOverview({ namaUser }: { namaUser: string }) {
-  const [stats, setStats] = useState<DashboardStats>(DEFAULT_STATS);
-  const [demografi, setDemografi] = useState<DashboardDemografi>(DEFAULT_DEMOGRAFI);
-  const [recentMutasi, setRecentMutasi] = useState<DashboardRecentMutasi>([]);
-  const [recentSurat, setRecentSurat] = useState<DashboardRecentSurat>([]);
-  const [isLoading, setIsLoading] = useState(true);
+type DashboardOverviewProps = {
+  namaUser: string;
+  initialData?: DashboardOverviewData | null;
+};
+
+export function DashboardOverview({ namaUser, initialData }: DashboardOverviewProps) {
+  const [stats, setStats] = useState<DashboardStats>(() => initialData?.stats ?? DEFAULT_STATS);
+  const [demografi, setDemografi] = useState<DashboardDemografi>(() => initialData?.demografi ?? DEFAULT_DEMOGRAFI);
+  const [recentMutasi, setRecentMutasi] = useState<DashboardRecentMutasi>(() => initialData?.recentMutasi ?? []);
+  const [recentSurat, setRecentSurat] = useState<DashboardRecentSurat>(() => initialData?.recentSurat ?? []);
+  const [isLoading, setIsLoading] = useState(!initialData);
+  const shouldSkipInitialLoadRef = useRef(Boolean(initialData));
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -89,6 +95,11 @@ export function DashboardOverview({ namaUser }: { namaUser: string }) {
   }, []);
 
   useEffect(() => {
+    if (shouldSkipInitialLoadRef.current) {
+      shouldSkipInitialLoadRef.current = false;
+      return;
+    }
+
     void loadData();
   }, [loadData]);
 

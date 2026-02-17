@@ -199,7 +199,7 @@ export const keluargaService = {
     const sortBy = normalizeSortBy(params.sortBy);
     const skip = (params.page - 1) * params.limit;
 
-    const [data, total] = await prisma.$transaction([
+    const [data, total] = await Promise.all([
       prisma.keluarga.findMany({
         where,
         include: keluargaListInclude,

@@ -13,7 +13,7 @@ export type PendudukListItem = {
   nik: string;
   nama: string;
   tempatLahir: string;
-  tanggalLahir: string;
+  tanggalLahir: Date | string;
   jenisKelamin: "LAKI_LAKI" | "PEREMPUAN";
   agama: "ISLAM" | "KRISTEN" | "KATOLIK" | "HINDU" | "BUDDHA" | "KONGHUCU" | "KEPERCAYAAN";
   statusPerkawinan: "BELUM_KAWIN" | "KAWIN" | "CERAI_HIDUP" | "CERAI_MATI";
@@ -72,7 +72,7 @@ export type PendudukDetailItem = PendudukListItem & {
   mutasiKeluar: Array<{
     id: string;
     jenisMutasi: "LAHIR" | "MATI" | "PINDAH_KELUAR" | "PINDAH_MASUK";
-    tanggalMutasi: string;
+    tanggalMutasi: Date | string;
     keterangan: string | null;
   }>;
   suratPenduduk: Array<{
@@ -83,7 +83,7 @@ export type PendudukDetailItem = PendudukListItem & {
       nomorSurat: string;
       perihal: string;
       status: "DRAFT" | "MENUNGGU_PERSETUJUAN" | "DISETUJUI" | "DITOLAK" | "DICETAK" | "SELESAI";
-      tanggalSurat: string;
+      tanggalSurat: Date | string;
     };
   }>;
 };

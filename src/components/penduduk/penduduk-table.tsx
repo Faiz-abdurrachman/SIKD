@@ -3,7 +3,7 @@
 import type { ColumnDef } from "@tanstack/react-table";
 import { Eye, Pencil, Plus, Trash2, UserCheck, UserMinus, Users, VenusAndMars } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
@@ -33,6 +33,15 @@ type PendudukTableProps = {
   canCreate: boolean;
   canUpdate: boolean;
   canDelete: boolean;
+  initialData?: {
+    rows: PendudukListItem[];
+    pagination: {
+      page: number;
+      pageSize: number;
+      total: number;
+      totalPages: number;
+    };
+  } | null;
 };
 
 type WilayahOptionsResponse = {
@@ -72,9 +81,16 @@ const EMPTY_FILTER: PendudukFilter = {
   rtId: "all",
 };
 
-export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTableProps) {
-  const [rows, setRows] = useState<PendudukListItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+const DEFAULT_PAGINATION = {
+  page: 1,
+  pageSize: 20,
+  total: 0,
+  totalPages: 1,
+};
+
+export function PendudukTable({ canCreate, canUpdate, canDelete, initialData }: PendudukTableProps) {
+  const [rows, setRows] = useState<PendudukListItem[]>(() => initialData?.rows ?? []);
+  const [isLoading, setIsLoading] = useState(!initialData);
   const [deleteTarget, setDeleteTarget] = useState<PendudukListItem | null>(null);
   const [draftFilter, setDraftFilter] = useState<PendudukFilter>(EMPTY_FILTER);
   const [appliedFilter, setAppliedFilter] = useState<PendudukFilter>(EMPTY_FILTER);
@@ -86,12 +102,8 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
     rw: [],
     rt: [],
   });
-  const [pagination, setPagination] = useState({
-    page: 1,
-    pageSize: 20,
-    total: 0,
-    totalPages: 1,
-  });
+  const [pagination, setPagination] = useState(() => initialData?.pagination ?? DEFAULT_PAGINATION);
+  const shouldSkipInitialLoadRef = useRef(Boolean(initialData));
 
   const loadPenduduk = useCallback(async () => {
     setIsLoading(true);
@@ -138,6 +150,11 @@ export function PendudukTable({ canCreate, canUpdate, canDelete }: PendudukTable
   }, [appliedFilter, pagination.page, pagination.pageSize]);
 
   useEffect(() => {
+    if (shouldSkipInitialLoadRef.current) {
+      shouldSkipInitialLoadRef.current = false;
+      return;
+    }
+
     void loadPenduduk();
   }, [loadPenduduk]);
 

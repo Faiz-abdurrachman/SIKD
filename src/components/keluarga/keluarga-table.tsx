@@ -3,7 +3,7 @@
 import type { ColumnDef } from "@tanstack/react-table";
 import { Eye, Home, Pencil, Plus, Trash2, UserRound, Users } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
@@ -30,6 +30,15 @@ type KeluargaTableProps = {
   canCreate: boolean;
   canUpdate: boolean;
   canDelete: boolean;
+  initialData?: {
+    rows: KeluargaListItem[];
+    pagination: {
+      page: number;
+      pageSize: number;
+      total: number;
+      totalPages: number;
+    };
+  } | null;
 };
 
 type WilayahOptionsResponse = {
@@ -55,9 +64,16 @@ const EMPTY_FILTER: KeluargaFilter = {
   rtId: "all",
 };
 
-export function KeluargaTable({ canCreate, canUpdate, canDelete }: KeluargaTableProps) {
-  const [rows, setRows] = useState<KeluargaListItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+const DEFAULT_PAGINATION = {
+  page: 1,
+  pageSize: 20,
+  total: 0,
+  totalPages: 1,
+};
+
+export function KeluargaTable({ canCreate, canUpdate, canDelete, initialData }: KeluargaTableProps) {
+  const [rows, setRows] = useState<KeluargaListItem[]>(() => initialData?.rows ?? []);
+  const [isLoading, setIsLoading] = useState(!initialData);
   const [deleteTarget, setDeleteTarget] = useState<KeluargaListItem | null>(null);
   const [draftFilter, setDraftFilter] = useState<KeluargaFilter>(EMPTY_FILTER);
   const [appliedFilter, setAppliedFilter] = useState<KeluargaFilter>(EMPTY_FILTER);
@@ -69,12 +85,8 @@ export function KeluargaTable({ canCreate, canUpdate, canDelete }: KeluargaTable
     rw: [],
     rt: [],
   });
-  const [pagination, setPagination] = useState({
-    page: 1,
-    pageSize: 20,
-    total: 0,
-    totalPages: 1,
-  });
+  const [pagination, setPagination] = useState(() => initialData?.pagination ?? DEFAULT_PAGINATION);
+  const shouldSkipInitialLoadRef = useRef(Boolean(initialData));
 
   const loadKeluarga = useCallback(async () => {
     setIsLoading(true);
@@ -112,6 +124,11 @@ export function KeluargaTable({ canCreate, canUpdate, canDelete }: KeluargaTable
   }, [appliedFilter, pagination.page, pagination.pageSize]);
 
   useEffect(() => {
+    if (shouldSkipInitialLoadRef.current) {
+      shouldSkipInitialLoadRef.current = false;
+      return;
+    }
+
     void loadKeluarga();
   }, [loadKeluarga]);
 
