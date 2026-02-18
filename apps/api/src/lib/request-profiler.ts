@@ -58,7 +58,9 @@ export function createRequestProfiler(request: Request, response: Response, rout
       ...segments.map((segment, index) => `${toMetricName(segment.name, index)};dur=${roundMs(segment.durationMs)}`),
     ].join(", ");
 
-    response.setHeader("Server-Timing", serverTiming);
+    if (!response.headersSent) {
+      response.setHeader("Server-Timing", serverTiming);
+    }
 
     if (SHOULD_LOG_PROFILE) {
       const durationMap = Object.fromEntries(

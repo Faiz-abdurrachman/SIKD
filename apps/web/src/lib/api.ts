@@ -1,13 +1,18 @@
 import type {
   ApiErrorResponse,
   ApiSuccessResponse,
+  AuditLogItem,
   DashboardOverviewData,
   KeluargaListItem,
   LaporanSummary,
   MutasiListItem,
   PaginatedResponse,
   PendudukListItem,
+  SettingsPayload,
   SuratListItem,
+  UserListItem,
+  UserRole,
+  WilayahOverview,
 } from "./types";
 
 const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env ?? {};
@@ -17,6 +22,12 @@ const DEV_USER_ID = viteEnv.VITE_DEV_USER_ID;
 const DEV_USER_ROLE = viteEnv.VITE_DEV_USER_ROLE ?? "SUPER_ADMIN";
 
 type QueryValue = string | number | boolean | undefined | null;
+type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+
+type RequestOptions = {
+  method?: HttpMethod;
+  body?: unknown;
+};
 
 function withQuery(path: string, query?: Record<string, QueryValue>) {
   if (!query) {
@@ -35,13 +46,22 @@ function withQuery(path: string, query?: Record<string, QueryValue>) {
   return queryString.length ? `${path}?${queryString}` : path;
 }
 
-async function requestJson<T>(path: string) {
+function buildHeaders() {
+  return {
+    ...(DEV_USER_ID ? { "x-user-id": DEV_USER_ID } : {}),
+    "x-user-role": DEV_USER_ROLE,
+  };
+}
+
+async function requestJson<T>(path: string, options: RequestOptions = {}) {
   const url = `${API_BASE_URL}${path}`;
   const response = await fetch(url, {
+    method: options.method ?? "GET",
     headers: {
-      ...(DEV_USER_ID ? { "x-user-id": DEV_USER_ID } : {}),
-      "x-user-role": DEV_USER_ROLE,
+      ...buildHeaders(),
+      ...(options.body !== undefined ? { "Content-Type": "application/json" } : {}),
     },
+    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
   });
 
   const payload = (await response.json()) as ApiSuccessResponse<T> | ApiErrorResponse;
@@ -54,13 +74,15 @@ async function requestJson<T>(path: string) {
   return payload.data;
 }
 
-async function requestPaginated<T>(path: string) {
+async function requestPaginated<T>(path: string, options: RequestOptions = {}) {
   const url = `${API_BASE_URL}${path}`;
   const response = await fetch(url, {
+    method: options.method ?? "GET",
     headers: {
-      ...(DEV_USER_ID ? { "x-user-id": DEV_USER_ID } : {}),
-      "x-user-role": DEV_USER_ROLE,
+      ...buildHeaders(),
+      ...(options.body !== undefined ? { "Content-Type": "application/json" } : {}),
     },
+    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
   });
 
   const payload = (await response.json()) as PaginatedResponse<T> | ApiErrorResponse;
@@ -96,5 +118,79 @@ export const apiClient = {
 
   getSurat(query: { q?: string; page?: number; limit?: number } = {}) {
     return requestPaginated<SuratListItem>(withQuery("/api/v1/surat", query));
+  },
+
+  getWilayahOverview() {
+    return requestJson<WilayahOverview>("/api/v1/wilayah/overview");
+  },
+
+  getUsers(query: { q?: string; role?: UserRole; isActive?: boolean; page?: number; limit?: number } = {}) {
+    return requestPaginated<UserListItem>(withQuery("/api/v1/users", query));
+  },
+
+  createUser(payload: {
+    username: string;
+    nama: string;
+    email?: string;
+    password: string;
+    role: UserRole;
+    isActive?: boolean;
+  }) {
+    return requestJson<UserListItem>("/api/v1/users", {
+      method: "POST",
+      body: payload,
+    });
+  },
+
+  toggleUser(userId: string) {
+    return requestJson<UserListItem>(`/api/v1/users/${userId}/toggle`, {
+      method: "PATCH",
+    });
+  },
+
+  resetUserPassword(userId: string, password: string) {
+    return requestJson<{ id: string }>(`/api/v1/users/${userId}/reset-password`, {
+      method: "POST",
+      body: { password },
+    });
+  },
+
+  getSettings() {
+    return requestJson<SettingsPayload>("/api/v1/settings");
+  },
+
+  updateSettings(payload: {
+    desa?: Partial<{
+      nama: string;
+      kecamatan: string;
+      kabupaten: string;
+      provinsi: string;
+      kodePos: string;
+      alamatKantor: string;
+      telepon: string;
+      email: string;
+      website: string;
+      namaKepalaDesa: string;
+      nipKepalaDesa: string;
+    }>;
+    settings?: Record<string, string>;
+  }) {
+    return requestJson<SettingsPayload>("/api/v1/settings", {
+      method: "PUT",
+      body: payload,
+    });
+  },
+
+  getAuditLogs(query: {
+    q?: string;
+    userId?: string;
+    entity?: string;
+    action?: string;
+    fromDate?: string;
+    toDate?: string;
+    page?: number;
+    limit?: number;
+  } = {}) {
+    return requestPaginated<AuditLogItem>(withQuery("/api/v1/audit-logs", query));
   },
 };

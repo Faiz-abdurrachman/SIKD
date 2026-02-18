@@ -2,6 +2,7 @@ import { type Request, Router } from "express";
 
 import { asyncHandler } from "../../lib/async-handler";
 import { ERROR_CODES, sendError, sendPaginated, sendSuccess } from "../../lib/api-response";
+import { getPathParam } from "../../lib/params";
 import { extractQueryParams } from "../../lib/query";
 import { createRequestProfiler } from "../../lib/request-profiler";
 import { requirePermission } from "../../middlewares/permission";
@@ -127,6 +128,43 @@ mutasiRouter.post(
       }
 
       console.error("[POST /api/v1/mutasi]", error);
+      const result = sendError(response, ERROR_CODES.INTERNAL_ERROR, "Terjadi kesalahan server", 500);
+      profiler.finish({ result: "internal_error" });
+      return result;
+    }
+  }),
+);
+
+mutasiRouter.get(
+  "/:id",
+  requirePermission("mutasi", "view"),
+  asyncHandler(async (request, response) => {
+    const profiler = createRequestProfiler(request, response, "GET /api/v1/mutasi/:id");
+    profiler.mark("auth");
+
+    try {
+      const id = getPathParam(request.params.id);
+      profiler.mark("validation");
+
+      const data = await (async () => {
+        try {
+          return await mutasiService.getById(id);
+        } finally {
+          profiler.mark("service");
+        }
+      })();
+
+      const result = sendSuccess(response, data);
+      profiler.finish({ result: "ok" });
+      return result;
+    } catch (error) {
+      if (isMutasiServiceError(error)) {
+        const result = sendError(response, error.code, error.message, error.status, error.details);
+        profiler.finish({ result: "service_error", errorCode: error.code });
+        return result;
+      }
+
+      console.error("[GET /api/v1/mutasi/:id]", error);
       const result = sendError(response, ERROR_CODES.INTERNAL_ERROR, "Terjadi kesalahan server", 500);
       profiler.finish({ result: "internal_error" });
       return result;

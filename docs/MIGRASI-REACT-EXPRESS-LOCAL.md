@@ -1,70 +1,106 @@
 # Migrasi Stack Lokal: Next.js -> React + Express
 
-## Tujuan
-- Pindah stack aplikasi ke `React (Vite)` untuk frontend dan `Express` untuk backend.
-- Fokus **lokal dulu** (tanpa deploy).
-- Menjaga perilaku inti aplikasi tetap konsisten dan tidak berantakan.
+## Ringkasan
+Migrasi lokal sudah dipindahkan ke dua app:
+- `apps/api`: Express API (reuse service + Prisma existing)
+- `apps/web`: React + Vite frontend
 
-## Prinsip Eksekusi (Anti-Ngayal)
-- Tidak ada klaim "selesai" jika endpoint/UI belum benar-benar bisa dijalankan lokal.
-- Migrasi dilakukan bertahap, setiap tahap ada output konkret yang bisa dites.
-- Scope jelas: modul prioritas dipindah dulu, modul lain tetap tercatat sebagai backlog.
+Target utama: pindah stack tanpa mengacak business logic lama, tetap ringan untuk local development.
 
-## Scope Tahap Ini
-- Scaffold backend `apps/api` (Express + Prisma + service existing).
-- Scaffold frontend `apps/web` (React + Vite).
-- Modul prioritas:
-  - Dashboard overview
-  - Penduduk (list)
-  - Keluarga (list)
-  - Laporan summary
-- Endpoint read tambahan:
-  - Mutasi (list)
-  - Surat (list)
-- Auth sementara untuk lokal:
-  - Dev auth via header (`x-user-id`, `x-user-role`) dengan fallback user aktif pertama.
+## Status Implementasi
+### 1. Backend Express (`apps/api`)
+Sudah tersedia endpoint v1 berikut:
+- Dashboard:
+  - `GET /api/v1/dashboard/overview`
+  - `GET /api/v1/dashboard/stats`
+  - `GET /api/v1/dashboard/demografi`
+  - `GET /api/v1/dashboard/recent-mutasi`
+  - `GET /api/v1/dashboard/recent-surat`
+- Penduduk:
+  - `GET /api/v1/penduduk`
+  - `POST /api/v1/penduduk`
+  - `GET /api/v1/penduduk/search`
+  - `GET /api/v1/penduduk/:id`
+  - `PUT /api/v1/penduduk/:id`
+  - `DELETE /api/v1/penduduk/:id`
+- Keluarga:
+  - `GET /api/v1/keluarga`
+  - `POST /api/v1/keluarga`
+  - `GET /api/v1/keluarga/search`
+  - `GET /api/v1/keluarga/:id`
+  - `PUT /api/v1/keluarga/:id`
+  - `DELETE /api/v1/keluarga/:id`
+  - `POST /api/v1/keluarga/:id/anggota`
+  - `PUT /api/v1/keluarga/:id/anggota/:pid`
+  - `DELETE /api/v1/keluarga/:id/anggota/:pid`
+- Mutasi:
+  - `GET /api/v1/mutasi`
+  - `POST /api/v1/mutasi`
+  - `GET /api/v1/mutasi/:id`
+- Surat:
+  - `GET /api/v1/surat`
+  - `POST /api/v1/surat`
+  - `GET /api/v1/surat/:id`
+  - `PUT /api/v1/surat/:id`
+  - `DELETE /api/v1/surat/:id`
+  - `PATCH /api/v1/surat/:id/submit`
+  - `PATCH /api/v1/surat/:id/approve`
+  - `PATCH /api/v1/surat/:id/reject`
+  - `PATCH /api/v1/surat/:id/print`
+  - `PATCH /api/v1/surat/:id/complete`
+  - `GET /api/v1/surat/:id/pdf`
+- Laporan:
+  - `GET /api/v1/laporan/summary`
+- Wilayah:
+  - `GET /api/v1/wilayah/options`
+  - `GET /api/v1/wilayah/overview`
+  - `GET /api/v1/wilayah/desa`
+  - `PUT /api/v1/wilayah/desa`
+  - `GET /api/v1/wilayah/dusun`
+  - `POST /api/v1/wilayah/dusun`
+  - `PUT /api/v1/wilayah/dusun/:id`
+  - `DELETE /api/v1/wilayah/dusun/:id`
+  - `GET /api/v1/wilayah/rw`
+  - `POST /api/v1/wilayah/rw`
+  - `PUT /api/v1/wilayah/rw/:id`
+  - `DELETE /api/v1/wilayah/rw/:id`
+  - `GET /api/v1/wilayah/rt`
+  - `POST /api/v1/wilayah/rt`
+  - `PUT /api/v1/wilayah/rt/:id`
+  - `DELETE /api/v1/wilayah/rt/:id`
+- Pengguna:
+  - `GET /api/v1/users`
+  - `POST /api/v1/users`
+  - `GET /api/v1/users/:id`
+  - `PUT /api/v1/users/:id`
+  - `PATCH /api/v1/users/:id/toggle`
+  - `POST /api/v1/users/:id/reset-password`
+- Pengaturan:
+  - `GET /api/v1/settings`
+  - `PUT /api/v1/settings`
+- Audit:
+  - `GET /api/v1/audit-logs`
 
-## Out of Scope Tahap Ini
-- Deploy production.
-- Migrasi 100% semua halaman CRUD detail.
-- Penggantian total sistem auth ke production-grade JWT/session.
+### 2. Frontend React (`apps/web`)
+Halaman aktif:
+- Dashboard
+- Penduduk
+- Keluarga
+- Surat
+- Mutasi
+- Laporan
+- Wilayah
+- Pengguna
+- Pengaturan
+- Audit Log
 
-## Struktur Target
-- `apps/api` -> Express API
-- `apps/web` -> React Vite app
-- Reuse layer domain existing:
-  - `src/services/*`
-  - `src/validations/*`
-  - `src/lib/prisma.ts`
+### 3. Optimasi Ringan
+- Fetch ganda mode dev dikurangi dengan menghapus `React.StrictMode` di `apps/web/src/main.tsx`.
+- Request profiling aktif pada endpoint API penting (termasuk laporan/mutasi/surat), log tampil sebagai `[API PERF]`.
 
-## Rencana Implementasi
-1. **Dokumentasi dan guardrail**
-   - File plan + checklist migrasi.
-2. **Backend Express**
-   - Setup server, middleware, route v1.
-   - Port endpoint prioritas.
-3. **Frontend React**
-   - Setup Vite + routing.
-   - Halaman prioritas konsumsi endpoint baru.
-4. **Script Lokal**
-   - Jalankan API + Web bersamaan.
-5. **Validasi**
-   - Lint/typecheck.
-   - Uji endpoint prioritas dan render halaman prioritas.
+## Hal yang Sengaja Dipertahankan
+- Layer domain (service + validation + Prisma) tetap reuse dari kode existing supaya migrasi aman.
+- Next.js lama tidak dihapus, tetap bisa dipakai sebagai baseline (`npm run dev`).
 
-## Kriteria Selesai Tahap Ini
-- `npm run dev:local` menyalakan API + Web tanpa error startup.
-- Halaman `Dashboard`, `Penduduk`, `Keluarga`, `Laporan` terbuka dari web React dan menampilkan data dari Express API.
-- Endpoint prioritas memberi respons JSON dengan format konsisten (`success/data/meta`).
-
-## Risiko dan Mitigasi
-- **Risiko**: perubahan auth memutus alur write/audit.
-  - **Mitigasi**: fallback user aktif dari DB untuk local dev agar audit tetap valid.
-- **Risiko**: mismatch type Date/string.
-  - **Mitigasi**: normalisasi type payload di web dan endpoint response.
-- **Risiko**: transisi parsial membingungkan.
-  - **Mitigasi**: dokumentasi runbook dan status scope jelas.
-
-## Rollback
-- Seluruh migrasi dilakukan sebagai perubahan terpisah; Next.js lama tetap ada sebagai baseline.
-- Jika ada masalah kritis, kembali jalankan stack lama dengan script `npm run dev`.
+## Catatan
+- Endpoint auth NextAuth tidak dipindah ke Express karena mode lokal memakai `devAuthMiddleware` (`x-user-id`, `x-user-role`) agar pengerjaan dan pengujian lebih cepat.

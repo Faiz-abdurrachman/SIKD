@@ -4,25 +4,44 @@
 - [x] Dokumen plan migrasi dibuat
 - [x] `apps/api` (Express) terbentuk
 - [x] `apps/web` (React + Vite) terbentuk
-- [x] Script run lokal terpadu tersedia
+- [x] Script run lokal terpadu tersedia (`dev:local`)
 
-## API
-- [x] `GET /api/v1/dashboard/overview`
-- [x] `GET /api/v1/penduduk`
-- [x] `GET /api/v1/keluarga`
-- [x] `GET /api/v1/laporan/summary`
-- [x] `GET /api/v1/mutasi`
-- [x] `GET /api/v1/surat`
-- [x] `GET /api/v1/wilayah/options`
+## API Parity `v1`
+- [x] Dashboard (`overview`, `stats`, `demografi`, `recent-mutasi`, `recent-surat`)
+- [x] Penduduk (list/create/search/detail/update/delete)
+- [x] Keluarga (list/create/search/detail/update/delete)
+- [x] Keluarga anggota (add/update/remove)
+- [x] Mutasi (list/create/detail)
+- [x] Surat (list/create/detail/update/delete)
+- [x] Surat workflow (`submit`, `approve`, `reject`, `print`, `complete`)
+- [x] Surat PDF (`GET /surat/:id/pdf`)
+- [x] Laporan summary
+- [x] Wilayah (`options`, `overview`, `desa`, `dusun`, `rw`, `rt` + CRUD yang relevan)
+- [x] Users (list/create/detail/update/toggle/reset-password)
+- [x] Settings (get/update)
+- [x] Audit logs (list)
 
-## Web
-- [x] Halaman Dashboard terhubung API
-- [x] Halaman Penduduk terhubung API
-- [x] Halaman Keluarga terhubung API
-- [x] Halaman Laporan terhubung API
-- [x] Navigasi dasar aplikasi
+## Web Modules
+- [x] Dashboard
+- [x] Penduduk
+- [x] Keluarga
+- [x] Surat
+- [x] Mutasi
+- [x] Laporan
+- [x] Wilayah
+- [x] Pengguna
+- [x] Pengaturan
+- [x] Audit Log
+
+## Performa & Stabilitas
+- [x] Profiling request endpoint aktif (`[API PERF]`)
+- [x] Dev StrictMode nonaktif untuk mengurangi fetch ganda
+- [x] Smoke test endpoint utama berhasil
 
 ## Validasi
-- [x] Lint lulus
-- [x] Typecheck lulus
-- [x] Smoke test local run (API + Web)
+- [x] `npm run typecheck:api`
+- [x] `npm run typecheck:web`
+- [x] `npm run typecheck`
+- [x] `npm run lint`
+- [x] `npm run build:web`
+- [x] Startup `npm run dev:local` berhasil

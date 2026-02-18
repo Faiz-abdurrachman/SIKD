@@ -119,3 +119,113 @@ export type SuratListItem = {
   tanggalSurat: string;
   perihal: string;
 };
+
+export type UserRole = "SUPER_ADMIN" | "KEPALA_DESA" | "SEKRETARIS" | "OPERATOR";
+
+export type UserListItem = {
+  id: string;
+  username: string;
+  nama: string;
+  email: string | null;
+  role: UserRole;
+  isActive: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type WilayahOverview = {
+  desa: {
+    id: string;
+    kode: string;
+    nama: string;
+    kecamatan: string;
+    kabupaten: string;
+    provinsi: string;
+    kodePos: string | null;
+    alamatKantor: string | null;
+    telepon: string | null;
+    email: string | null;
+    website: string | null;
+    namaKepalaDesa: string | null;
+    nipKepalaDesa: string | null;
+  } | null;
+  dusun: Array<{
+    id: string;
+    nama: string;
+    _count?: {
+      rwList: number;
+    };
+  }>;
+  rw: Array<{
+    id: string;
+    nomor: string;
+    dusunId: string;
+    dusun: {
+      id: string;
+      nama: string;
+    };
+    _count?: {
+      rtList: number;
+    };
+  }>;
+  rt: Array<{
+    id: string;
+    nomor: string;
+    rwId: string;
+    rw: {
+      id: string;
+      nomor: string;
+      dusun: {
+        id: string;
+        nama: string;
+      };
+    };
+    _count?: {
+      keluarga: number;
+    };
+  }>;
+};
+
+export type SettingItem = {
+  id: string;
+  key: string;
+  value: string;
+  group: string;
+};
+
+export type SettingsPayload = {
+  desa: {
+    id: string;
+    kode: string;
+    nama: string;
+    kecamatan: string;
+    kabupaten: string;
+    provinsi: string;
+    kodePos: string | null;
+    alamatKantor: string | null;
+    telepon: string | null;
+    email: string | null;
+    website: string | null;
+    namaKepalaDesa: string | null;
+    nipKepalaDesa: string | null;
+  } | null;
+  settings: SettingItem[];
+  grouped: Record<string, Record<string, string>>;
+};
+
+export type AuditLogItem = {
+  id: string;
+  action: string;
+  entity: string;
+  entityId: string | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+  createdAt: string;
+  user: {
+    id: string;
+    username: string;
+    nama: string;
+    role: UserRole;
+  } | null;
+};
